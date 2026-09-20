@@ -9,7 +9,7 @@ import {
   getStoredTrips,
   getDukansWithDailyStatus,
   DukanDailyStatus,
-  syncOrdersWithBackend,
+  syncAllWithBackend,
 } from '@/lib/storage';
 import { MobileHeader } from '@/components/MobileHeader';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
@@ -41,30 +41,34 @@ export default function TripsPage() {
     setDukans(getDukansWithDailyStatus());
 
     const refreshData = () => {
-      syncOrdersWithBackend().then(() => {
+      syncAllWithBackend().then(() => {
+        setTrips(getStoredTrips());
         setDukans(getDukansWithDailyStatus());
       });
     };
 
-    // Sync cloud orders immediately
+    // Sync cloud orders & dukans immediately
     refreshData();
 
     // Auto poll every 4s
     const interval = setInterval(refreshData, 4000);
 
     const handleSyncEvent = () => {
+      setTrips(getStoredTrips());
       setDukans(getDukansWithDailyStatus());
     };
 
     window.addEventListener('focus', refreshData);
     window.addEventListener('visibilitychange', refreshData);
     window.addEventListener('rushabh-orders-synced', handleSyncEvent);
+    window.addEventListener('rushabh-dukans-synced', handleSyncEvent);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', refreshData);
       window.removeEventListener('visibilitychange', refreshData);
       window.removeEventListener('rushabh-orders-synced', handleSyncEvent);
+      window.removeEventListener('rushabh-dukans-synced', handleSyncEvent);
     };
   }, [router]);
 

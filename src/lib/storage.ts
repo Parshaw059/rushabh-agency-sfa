@@ -220,6 +220,15 @@ export const addDukan = (dukanData: {
   );
   saveTrips(updatedTrips);
 
+  // Sync to Cloud Store immediately
+  if (isBrowser && navigator.onLine) {
+    fetch('/api/dukans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dukan: newDukan }),
+    }).catch((e) => console.warn('[Storage] Failed to sync new dukan to cloud:', e));
+  }
+
   return newDukan;
 };
 
@@ -236,6 +245,13 @@ export const deleteDukan = (dukanId: string): void => {
       t.id === dukanToDelete.tripId ? { ...t, dukanCount: Math.max(0, t.dukanCount - 1) } : t
     );
     saveTrips(updatedTrips);
+  }
+
+  // Delete from Cloud Store
+  if (isBrowser && navigator.onLine) {
+    fetch(`/api/dukans/${dukanId}`, {
+      method: 'DELETE',
+    }).catch((e) => console.warn('[Storage] Failed to delete dukan from cloud:', e));
   }
 };
 
@@ -659,10 +675,98 @@ export const syncOrdersWithBackend = async (): Promise<Order[]> => {
   return getStoredOrders();
 };
 
+// Fetch latest dukans from Cloud, upload any local custom dukans, and merge
+export const syncDukansWithBackend = async (): Promise<Dukan[]> => {
+  if (!isBrowser) return getStoredDukans();
+  if (!navigator.onLine) return getStoredDukans();
+
+  try {
+    const res = await fetch('/api/dukans', { cache: 'no-store' });
+    if (!res.ok) return getStoredDukans();
+    const data = await res.json();
+    if (data.success && Array.isArray(data.dukans)) {
+      const cloudDukans: Dukan[] = data.dukans;
+      const deletedIds = new Set<string>(Array.isArray(data.deletedIds) ? data.deletedIds : []);
+      const localDukans = getStoredDukans();
+
+      // 1. Filter out deleted
+      const cleanLocal = localDukans.filter((d) => !deletedIds.has(d.id));
+
+      // 2. BI-DIRECTIONAL UPLOAD:
+      // If this device has any local retailers (like the 18 added in Undera) that are not yet in the cloud,
+      // upload them to the cloud right now!
+      const cloudDukanIds = new Set(cloudDukans.map((d) => d.id));
+      const initialDukanIds = new Set(INITIAL_DUKANS.map((d) => d.id));
+      const missingFromCloud = cleanLocal.filter(
+        (d) => !cloudDukanIds.has(d.id) && !initialDukanIds.has(d.id)
+      );
+
+      if (missingFromCloud.length > 0) {
+        try {
+          await fetch('/api/dukans', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dukans: missingFromCloud }),
+          });
+          cloudDukans.push(...missingFromCloud);
+        } catch (e) {
+          console.warn('[CloudDukans] Failed to upload local dukans:', e);
+        }
+      }
+
+      // 3. Merge: INITIAL_DUKANS + cloudDukans + cleanLocal (ensuring NO retailer is ever removed!)
+      const map = new Map<string, Dukan>();
+      INITIAL_DUKANS.forEach((d) => {
+        if (!deletedIds.has(d.id)) map.set(d.id, d);
+      });
+      cloudDukans.forEach((d) => {
+        if (!deletedIds.has(d.id)) map.set(d.id, d);
+      });
+      cleanLocal.forEach((d) => {
+        if (!deletedIds.has(d.id)) {
+          const prev = map.get(d.id);
+          map.set(d.id, { ...prev, ...d });
+        }
+      });
+
+      const merged = Array.from(map.values());
+      saveDukans(merged);
+
+      // 4. Update trip retailer counts across all beats
+      const trips = getStoredTrips();
+      const updatedTrips = trips.map((t) => {
+        const count = merged.filter((d) => d.tripId === t.id).length;
+        return { ...t, dukanCount: count };
+      });
+      saveTrips(updatedTrips);
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('rushabh-dukans-synced', { detail: merged }));
+      }
+
+      return merged;
+    }
+  } catch (err) {
+    console.warn('[CloudDukans] Error syncing dukans:', err);
+  }
+
+  return getStoredDukans();
+};
+
+// Master Function: Sync both Orders and Dukans
+export const syncAllWithBackend = async (): Promise<{ orders: Order[]; dukans: Dukan[] }> => {
+  const [orders, dukans] = await Promise.all([
+    syncOrdersWithBackend(),
+    syncDukansWithBackend(),
+  ]);
+  return { orders, dukans };
+};
+
 // Listen for network restore to auto-flush queue
 if (isBrowser) {
   window.addEventListener('online', () => {
     flushOfflineOrderQueue();
+    syncDukansWithBackend();
   });
 }
 

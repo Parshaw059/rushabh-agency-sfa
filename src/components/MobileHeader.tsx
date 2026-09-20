@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, User, LogOut, PackageCheck, Shield, Smartphone, RefreshCw } from 'lucide-react';
 import { User as UserType } from '@/types';
-import { logoutUser, syncOrdersWithBackend } from '@/lib/storage';
+import { logoutUser, syncAllWithBackend } from '@/lib/storage';
 import { InstallAppModal } from './InstallAppModal';
 
 interface MobileHeaderProps {
@@ -30,10 +30,10 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   const handleManualSync = async () => {
     setIsSyncing(true);
     try {
-      await syncOrdersWithBackend();
+      await syncAllWithBackend();
     } catch (e) {
     } finally {
-      setTimeout(() => setIsSyncing(false), 600);
+      setTimeout(() => setIsSyncing(false), 700);
     }
   };
 

@@ -11,7 +11,7 @@ import {
   getDukansWithDailyStatus,
   DukanDailyStatus,
   getStoredOrders,
-  syncOrdersWithBackend,
+  syncAllWithBackend,
   deleteOrder,
   addDukan,
   deleteDukan,
@@ -88,22 +88,29 @@ export default function TripDukansPage() {
 
     if (foundTrip) {
       setDukans(getDukansWithDailyStatus(foundTrip.id));
-      // Cloud sync immediately on load
-      syncOrdersWithBackend().then(() => {
+      // Cloud sync immediately on load — pulls both orders AND dukans (custom retailers)
+      syncAllWithBackend().then(() => {
+        setTrip(getStoredTrips().find((t) => t.id === foundTrip.id) || foundTrip);
         setDukans(getDukansWithDailyStatus(foundTrip.id));
       });
     }
 
-    // Auto-sync with cloud every 5 seconds so phone orders immediately show up on laptop
+    // Auto-sync with cloud every 5 seconds
     const interval = setInterval(() => {
-      syncOrdersWithBackend().then(() => {
-        if (foundTrip) setDukans(getDukansWithDailyStatus(foundTrip.id));
+      syncAllWithBackend().then(() => {
+        if (foundTrip) {
+          setTrip(getStoredTrips().find((t) => t.id === foundTrip.id) || foundTrip);
+          setDukans(getDukansWithDailyStatus(foundTrip.id));
+        }
       });
     }, 5000);
 
     const handleFocus = () => {
-      syncOrdersWithBackend().then(() => {
-        if (foundTrip) setDukans(getDukansWithDailyStatus(foundTrip.id));
+      syncAllWithBackend().then(() => {
+        if (foundTrip) {
+          setTrip(getStoredTrips().find((t) => t.id === foundTrip.id) || foundTrip);
+          setDukans(getDukansWithDailyStatus(foundTrip.id));
+        }
       });
     };
     window.addEventListener('focus', handleFocus);

@@ -1,5 +1,5 @@
 import mysql from 'mysql2/promise';
-import { Order, OrderItemRecord } from '@/types';
+import { Order, OrderItemRecord, Dukan } from '@/types';
 
 let pool: mysql.Pool | null = null;
 
@@ -277,5 +277,71 @@ export const deleteOrderFromDb = async (orderId: string): Promise<boolean> => {
     return false;
   } finally {
     if (connection) connection.release();
+  }
+};
+
+// ==========================================
+// DUKANS / RETAILERS (CRUD IN MYSQL)
+// ==========================================
+export const getDukansFromDb = async (): Promise<Dukan[]> => {
+  const p = getDbPool();
+  if (!p) return [];
+
+  try {
+    const [rows]: any = await p.query(
+      `SELECT id, shop_name as shopName, owner_name as ownerName, phone, trip_id as tripId, address, gst_number as gstNumber, visit_status as visitStatus
+       FROM dukans ORDER BY shop_name ASC`
+    );
+    return rows as Dukan[];
+  } catch (err) {
+    console.warn('[MySQL] Error fetching dukans:', err);
+    return [];
+  }
+};
+
+export const upsertDukanToDb = async (dukan: Dukan): Promise<boolean> => {
+  const p = getDbPool();
+  if (!p) return false;
+
+  try {
+    await p.query(
+      `INSERT INTO dukans (id, shop_name, owner_name, phone, trip_id, address, gst_number, visit_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         shop_name=VALUES(shop_name),
+         owner_name=VALUES(owner_name),
+         phone=VALUES(phone),
+         trip_id=VALUES(trip_id),
+         address=VALUES(address),
+         gst_number=VALUES(gst_number),
+         visit_status=VALUES(visit_status)`,
+      [
+        dukan.id,
+        dukan.shopName,
+        dukan.ownerName,
+        dukan.phone,
+        dukan.tripId,
+        dukan.address,
+        dukan.gstNumber || null,
+        dukan.visitStatus || 'PENDING',
+      ]
+    );
+    return true;
+  } catch (err) {
+    console.warn('[MySQL] Error upserting dukan:', err);
+    return false;
+  }
+};
+
+export const deleteDukanFromDb = async (dukanId: string): Promise<boolean> => {
+  const p = getDbPool();
+  if (!p) return false;
+
+  try {
+    await p.query(`DELETE FROM dukans WHERE id = ?`, [dukanId]);
+    return true;
+  } catch (err) {
+    console.warn('[MySQL] Error deleting dukan from db:', err);
+    return false;
   }
 };

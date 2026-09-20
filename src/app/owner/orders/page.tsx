@@ -9,7 +9,7 @@ import {
   getStoredTrips,
   getDukansWithDailyStatus,
   DukanDailyStatus,
-  syncOrdersWithBackend,
+  syncAllWithBackend,
   updateOrderItems,
   deleteOrder,
   generateWdmsSalesmanCsv,
@@ -70,13 +70,13 @@ export default function OwnerOrdersPage() {
     setDukans(getDukansWithDailyStatus());
     setAllTrips(getStoredTrips());
 
-    // Sync latest orders from Cloud
+    // Sync latest orders + dukans from Cloud
     const loadFresh = () => {
-      syncOrdersWithBackend().then((fresh) => {
-        if (fresh && fresh.length > 0) {
-          setOrders(fresh);
-          setDukans(getDukansWithDailyStatus());
+      syncAllWithBackend().then((result) => {
+        if (result && result.orders && result.orders.length > 0) {
+          setOrders(result.orders);
         }
+        setDukans(getDukansWithDailyStatus());
       });
     };
 
