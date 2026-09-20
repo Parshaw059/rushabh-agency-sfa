@@ -1,5 +1,5 @@
 import { Order, OrderItemRecord } from '@/types';
-import { getOrdersFromDb, insertOrderToDb, updateOrderItemsInDb } from './mysql';
+import { getOrdersFromDb, insertOrderToDb, updateOrderItemsInDb, deleteOrderFromDb } from './mysql';
 
 // GitHub Cloud Store Configuration (Zero manual configuration needed from user)
 const getStoreKey = (): string => {
@@ -144,5 +144,22 @@ export const updateCloudOrderItems = async (
     return false;
   } catch (e) {
     return false;
+  }
+};
+
+// Master Function: Delete an order completely from Cloud Store
+export const deleteCloudOrder = async (orderId: string): Promise<boolean> => {
+  let deletedMysql = false;
+  try {
+    deletedMysql = await deleteOrderFromDb(orderId);
+  } catch (e) {}
+
+  try {
+    const currentOrders = await getOrdersFromGist();
+    const filtered = currentOrders.filter((o) => o.id !== orderId && o.orderNumber !== orderId);
+    const savedGist = await saveOrdersToGist(filtered);
+    return deletedMysql || savedGist;
+  } catch (e) {
+    return deletedMysql;
   }
 };

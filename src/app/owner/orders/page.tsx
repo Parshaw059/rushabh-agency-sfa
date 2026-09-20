@@ -11,6 +11,7 @@ import {
   DukanDailyStatus,
   syncOrdersWithBackend,
   updateOrderItems,
+  deleteOrder,
   generateWdmsSalesmanCsv,
 } from '@/lib/storage';
 import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp } from '@/utils/generatePdfReceipt';
@@ -22,6 +23,7 @@ import {
   Download,
   Share2,
   Edit,
+  Trash2,
   Eye,
   CheckCircle2,
   Clock,
@@ -52,6 +54,10 @@ export default function OwnerOrdersPage() {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [editableItems, setEditableItems] = useState<OrderItemRecord[]>([]);
   const [notification, setNotification] = useState<string | null>(null);
+
+  // Delete Order State
+  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const user = getCurrentUser();
@@ -118,6 +124,24 @@ export default function OwnerOrdersPage() {
     setEditingOrder(null);
     setNotification(`Successfully updated quantities for Order #${editingOrder.orderNumber}!`);
     setTimeout(() => setNotification(null), 3500);
+  };
+
+  // Delete Order and revert shop status back to Pending Today
+  const handleConfirmDeleteOrder = async () => {
+    if (!orderToDelete) return;
+    setIsDeleting(true);
+    try {
+      const updatedOrders = await deleteOrder(orderToDelete.id);
+      setOrders(updatedOrders);
+      setDukans(getDukansWithDailyStatus());
+      setNotification(`Order #${orderToDelete.orderNumber} deleted. ${orderToDelete.dukanName} is now Pending.`);
+      setTimeout(() => setNotification(null), 3500);
+    } catch (err) {
+      console.error('Error deleting order:', err);
+    } finally {
+      setIsDeleting(false);
+      setOrderToDelete(null);
+    }
   };
 
   // 1-Click Export to WDMS CSV
@@ -429,11 +453,21 @@ export default function OwnerOrdersPage() {
                       {/* Owner Edit Quantities Button */}
                       <button
                         onClick={() => handleOpenEditOrder(order)}
-                        className="py-1.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs flex items-center gap-1 border border-slate-200"
+                        className="py-1.5 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center gap-1 border border-slate-200 transition-colors"
                         title="Change ordered box or loose quantity"
                       >
                         <Edit className="w-3.5 h-3.5" />
                         <span>Edit Qty</span>
+                      </button>
+
+                      {/* Owner Delete Order Button */}
+                      <button
+                        onClick={() => setOrderToDelete(order)}
+                        className="py-1.5 px-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs flex items-center gap-1 border border-rose-200 transition-colors"
+                        title="Delete order and return shop to pending"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
                       </button>
                     </div>
                   </div>
@@ -563,6 +597,51 @@ export default function OwnerOrdersPage() {
         isOpen={Boolean(slipModalOrder)}
         onClose={() => setSlipModalOrder(null)}
       />
+
+      {/* Delete Order Confirmation Modal */}
+      {orderToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="max-w-sm w-full bg-white rounded-3xl p-5 shadow-2xl border border-rose-200 space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div className="text-center space-y-1.5">
+              <h3 className="text-base font-black text-slate-900">
+                Delete Order #{orderToDelete.orderNumber}?
+              </h3>
+              <p className="text-xs text-slate-600 font-medium">
+                Are you sure you want to delete the order for <strong className="text-slate-900">{orderToDelete.dukanName}</strong>?
+              </p>
+              <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-2.5 text-left space-y-1">
+                <p className="font-bold flex items-center gap-1">
+                  <span>⚠️ Permanent Action:</span>
+                </p>
+                <p>• Order #{orderToDelete.orderNumber} will be deleted from the database.</p>
+                <p>• {orderToDelete.dukanName} will be marked back as <strong>Pending Today</strong> so a new bill can be created.</p>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setOrderToDelete(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDeleteOrder}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-md shadow-rose-600/20 flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isDeleting ? 'Deleting...' : 'Yes, Delete'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <MobileBottomNav currentUser={currentUser} />
     </div>

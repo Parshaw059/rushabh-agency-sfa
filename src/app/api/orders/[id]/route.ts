@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateCloudOrderItems } from '@/lib/cloudDb';
+import { updateCloudOrderItems, deleteCloudOrder } from '@/lib/cloudDb';
 import { OrderItemRecord } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -34,6 +34,37 @@ export async function PUT(
   } catch (error: any) {
     return NextResponse.json(
       { success: false, error: error?.message || 'Failed to update order' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE /api/orders/[id] - Delete an order completely from Cloud Store
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const orderId = params.id;
+    if (!orderId) {
+      return NextResponse.json(
+        { success: false, error: 'Order ID is required' },
+        { status: 400 }
+      );
+    }
+
+    const deleted = await deleteCloudOrder(orderId);
+
+    return NextResponse.json({
+      success: true,
+      deleted,
+      message: deleted
+        ? 'Order deleted successfully from Cloud Store'
+        : 'Failed to delete order from cloud store',
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error?.message || 'Failed to delete order' },
       { status: 500 }
     );
   }

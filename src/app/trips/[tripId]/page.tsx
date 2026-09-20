@@ -12,6 +12,7 @@ import {
   DukanDailyStatus,
   getStoredOrders,
   syncOrdersWithBackend,
+  deleteOrder,
   addDukan,
   deleteDukan,
 } from '@/lib/storage';
@@ -63,6 +64,7 @@ export default function TripDukansPage() {
 
   // Delete Dukan State
   const [dukanToDelete, setDukanToDelete] = useState<Dukan | null>(null);
+  const [billToDelete, setBillToDelete] = useState<{ id: string; orderNumber: string; shopName: string } | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
 
   const refreshDukans = (tId: string) => {
@@ -467,7 +469,38 @@ export default function TripDukansPage() {
                   {/* Action button to order or view bill */}
                   <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
                     {isBooked ? (
-                      <>
+                      <div className="flex items-center justify-between w-full gap-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const allOrders = getStoredOrders();
+                              const target =
+                                dukan.todayOrder ||
+                                allOrders.find(
+                                  (o) => o.id === dukan.lastOrderId || o.dukanId === dukan.id
+                                );
+                              if (target) {
+                                setSelectedSlipOrder(target);
+                                setShowSlipModal(true);
+                              }
+                            }}
+                            className="py-1.5 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-black flex items-center gap-1 shadow-xs transition-colors"
+                            title="View today's booked bill slip"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>View Bill</span>
+                          </button>
+
+                          <Link
+                            href={`/order/${dukan.id}?tripId=${trip.id}`}
+                            className="py-1.5 px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-black flex items-center gap-1 transition-colors"
+                          >
+                            <ShoppingBag className="w-3.5 h-3.5" />
+                            <span>+ Add</span>
+                          </Link>
+                        </div>
+
                         <button
                           type="button"
                           onClick={() => {
@@ -478,25 +511,20 @@ export default function TripDukansPage() {
                                 (o) => o.id === dukan.lastOrderId || o.dukanId === dukan.id
                               );
                             if (target) {
-                              setSelectedSlipOrder(target);
-                              setShowSlipModal(true);
+                              setBillToDelete({
+                                id: target.id,
+                                orderNumber: target.orderNumber,
+                                shopName: dukan.shopName,
+                              });
                             }
                           }}
-                          className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-black flex items-center gap-1.5 shadow-xs transition-colors"
-                          title="View today's booked bill slip"
+                          className="py-1.5 px-2 rounded-xl text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 text-xs font-bold flex items-center gap-1 transition-colors"
+                          title="Cancel and delete this bill"
                         >
-                          <Eye className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>👁️ View Bill</span>
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete Bill</span>
                         </button>
-
-                        <Link
-                          href={`/order/${dukan.id}?tripId=${trip.id}`}
-                          className="py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-black flex items-center gap-1 transition-colors"
-                        >
-                          <ShoppingBag className="w-3.5 h-3.5" />
-                          <span>+ Add More</span>
-                        </Link>
-                      </>
+                      </div>
                     ) : (
                       <>
                         <span className="text-[11px] font-bold text-amber-700 flex items-center gap-1">
@@ -675,6 +703,52 @@ export default function TripDukansPage() {
                 className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs shadow-md shadow-red-600/20 active:scale-[0.98]"
               >
                 Yes, Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DELETE BILL / ORDER CONFIRMATION */}
+      {billToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-5 space-y-3 shadow-2xl border border-slate-200 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div>
+              <h3 className="text-base font-black text-slate-900">
+                Cancel & Delete Bill?
+              </h3>
+              <p className="text-xs text-slate-600 mt-1">
+                Are you sure you want to delete <strong>Bill #{billToDelete.orderNumber}</strong> for <strong>{billToDelete.shopName}</strong>?
+              </p>
+              <div className="mt-2.5 p-2 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 font-bold">
+                ⚠️ This will cancel the order in the cloud. The shop will be marked as <strong>Pending Today</strong> again so a fresh bill can be booked if needed.
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setBillToDelete(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50"
+              >
+                Keep Order
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteOrder(billToDelete.id);
+                  refreshDukans(trip.id);
+                  setNotification(`Bill #${billToDelete.orderNumber} deleted successfully. ${billToDelete.shopName} is now Pending.`);
+                  setTimeout(() => setNotification(null), 3500);
+                  setBillToDelete(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs shadow-md shadow-red-600/20 active:scale-[0.98]"
+              >
+                Yes, Delete Bill
               </button>
             </div>
           </div>

@@ -255,3 +255,27 @@ export const updateOrderItemsInDb = async (
     if (connection) connection.release();
   }
 };
+
+// Delete order and its items from MySQL
+export const deleteOrderFromDb = async (orderId: string): Promise<boolean> => {
+  const p = getDbPool();
+  if (!p) return false;
+
+  let connection: mysql.PoolConnection | null = null;
+  try {
+    connection = await p.getConnection();
+    await connection.beginTransaction();
+
+    await connection.query('DELETE FROM order_items WHERE order_id = ?', [orderId]);
+    await connection.query('DELETE FROM orders WHERE id = ?', [orderId]);
+
+    await connection.commit();
+    return true;
+  } catch (err) {
+    if (connection) await connection.rollback();
+    console.warn('[MySQL] Error deleting order:', err);
+    return false;
+  } finally {
+    if (connection) connection.release();
+  }
+};

@@ -471,6 +471,35 @@ export const updateOrderItems = (
   return updated;
 };
 
+// Delete an order completely (Used by both Salesman in field and Owner on desk)
+export const deleteOrder = (orderId: string): Order[] => {
+  const orders = getStoredOrders();
+  const orderToDelete = orders.find((o) => o.id === orderId || o.orderNumber === orderId);
+  const remaining = orders.filter((o) => o.id !== orderId && o.orderNumber !== orderId);
+  saveOrders(remaining);
+
+  // If the deleted order belonged to a dukan, revert that dukan back to PENDING
+  if (orderToDelete) {
+    updateDukanOrderRecord(orderToDelete.dukanId, {
+      visitStatus: 'PENDING',
+      lastOrderAmount: undefined,
+      lastOrderNumber: undefined,
+      lastOrderId: undefined,
+      lastOrderDate: undefined,
+      lastOrderTime: undefined,
+    });
+  }
+
+  // Sync deletion to Cloud backend
+  if (isBrowser && navigator.onLine) {
+    fetch(`/api/orders/${orderToDelete?.id || orderId}`, {
+      method: 'DELETE',
+    }).catch(() => {});
+  }
+
+  return remaining;
+};
+
 // OFFLINE QUEUE & MYSQL CLOUD SYNC
 const QUEUE_KEY = 'rushabh_offline_order_queue_v4';
 
