@@ -9,6 +9,8 @@ import {
   getDukanById,
   getStoredProducts,
   createSalesmanOrder,
+  getTodayOrderByDukan,
+  updateSalesmanOrder,
 } from '@/lib/storage';
 import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp } from '@/utils/generatePdfReceipt';
 import { MobileHeader } from '@/components/MobileHeader';
@@ -47,6 +49,9 @@ export default function SalesmanOrderTakingPage() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('dabur');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Existing order today (to update previous bill instead of creating duplicate)
+  const [existingTodayOrder, setExistingTodayOrder] = useState<Order | null>(null);
+
   // Cart / Order Indent state
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
@@ -73,7 +78,39 @@ export default function SalesmanOrderTakingPage() {
       return;
     }
     setDukan(loadedDukan);
-    setProducts(getStoredProducts());
+    const loadedProducts = getStoredProducts();
+    setProducts(loadedProducts);
+
+    // Check if a bill was ALREADY booked today for this retailer
+    const priorOrder = getTodayOrderByDukan(dukanId);
+    if (priorOrder) {
+      setExistingTodayOrder(priorOrder);
+
+      // Pre-load previous bill items into cart so additions happen on the same bill
+      const preloadedCart: CartItem[] = priorOrder.items.map((item) => {
+        const prod = loadedProducts.find((p) => p.id === item.productId) || {
+          id: item.productId,
+          companyId: 'dabur',
+          companyName: item.companyName,
+          category: 'FMCG',
+          name: item.productName,
+          packSize: item.packSize,
+          wdmsCode: item.wdmsCode,
+          unitsPerBox: item.unitsPerBox,
+          mrp: item.mrp,
+        };
+        return {
+          product: prod,
+          boxQty: item.boxQty,
+          looseQty: item.looseQty,
+          totalUnits: item.totalUnits,
+          lineMrpTotal: item.lineMrpTotal,
+        };
+      });
+
+      setCartItems(preloadedCart);
+      if (priorOrder.notes) setNotes(priorOrder.notes);
+    }
   }, [dukanId, router]);
 
   // Handle Box & Loose quantity update
@@ -127,16 +164,27 @@ export default function SalesmanOrderTakingPage() {
       lineMrpTotal: c.lineMrpTotal,
     }));
 
-    const newOrder = createSalesmanOrder({
-      tripId: dukan.tripId || tripIdFromUrl,
-      tripName: `Trip ${dukan.tripId ? dukan.tripId.replace('trip-', '') : '1'} Beat`,
-      dukan,
-      salesman: currentUser,
-      items: orderItemRecords,
-      notes,
-    });
+    let savedOrder: Order;
 
-    setCompletedOrder(newOrder);
+    if (existingTodayOrder) {
+      // Update previous bill of today with new and modified items (NO DUPLICATE BILL!)
+      savedOrder = updateSalesmanOrder(existingTodayOrder.id, {
+        items: orderItemRecords,
+        notes,
+      });
+    } else {
+      // Create new bill
+      savedOrder = createSalesmanOrder({
+        tripId: dukan.tripId || tripIdFromUrl,
+        tripName: `Trip ${dukan.tripId ? dukan.tripId.replace('trip-', '') : '1'} Beat`,
+        dukan,
+        salesman: currentUser,
+        items: orderItemRecords,
+        notes,
+      });
+    }
+
+    setCompletedOrder(savedOrder);
     setCartItems([]);
     setIsReviewOpen(false);
     setIsSubmitting(false);
@@ -208,6 +256,26 @@ export default function SalesmanOrderTakingPage() {
             MRP DISPLAY ONLY
           </span>
         </div>
+
+        {/* Existing Bill Notice Banner if updating today's bill */}
+        {existingTodayOrder && (
+          <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-emerald-700 text-white p-3.5 rounded-2xl shadow-md space-y-1.5 animate-in fade-in">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full text-blue-100 border border-white/20">
+                Updating Bill #{existingTodayOrder.orderNumber}
+              </span>
+              <span className="text-[10px] text-emerald-200 font-bold bg-white/10 px-2 py-0.5 rounded-full">
+                ✓ No Duplicate Bill
+              </span>
+            </div>
+            <p className="text-xs font-black leading-snug">
+              This shop already has a bill today. Any new items added will update Bill #{existingTodayOrder.orderNumber} directly!
+            </p>
+            <p className="text-[11px] text-blue-100">
+              Previous items are pre-loaded in your cart below. Increase quantities, add new products, or adjust items.
+            </p>
+          </div>
+        )}
 
         {/* 16 FMCG Company Selector Bar */}
         <div className="bg-white p-2.5 rounded-2xl border border-slate-200/90 shadow-xs space-y-2">
@@ -456,7 +524,7 @@ export default function SalesmanOrderTakingPage() {
             onClick={() => setIsReviewOpen(true)}
             className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-xs shadow-md shadow-emerald-700/25 flex items-center gap-1.5 transition-all active:scale-[0.98]"
           >
-            <span>Review Order</span>
+            <span>{existingTodayOrder ? `Review Bill (${existingTodayOrder.orderNumber})` : 'Review Order'}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
@@ -469,7 +537,16 @@ export default function SalesmanOrderTakingPage() {
             {/* Header */}
             <div className="bg-white text-slate-900 p-4 flex items-center justify-between border-b border-slate-200">
               <div>
-                <h3 className="font-black text-sm leading-tight">Review Field Order</h3>
+                <div className="flex items-center gap-1.5">
+                  <h3 className="font-black text-sm leading-tight">
+                    {existingTodayOrder ? `Update Bill #${existingTodayOrder.orderNumber}` : 'Review Field Order'}
+                  </h3>
+                  {existingTodayOrder && (
+                    <span className="text-[9px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded-full border border-emerald-300">
+                      Consolidating Bill
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-emerald-700 font-bold">{dukan.shopName}</p>
               </div>
               <button
@@ -578,7 +655,11 @@ export default function SalesmanOrderTakingPage() {
                 ) : (
                   <>
                     <FileText className="w-4 h-4" />
-                    <span>Confirm & Book Order for Dukan</span>
+                    <span>
+                      {existingTodayOrder
+                        ? `Save & Update Bill #${existingTodayOrder.orderNumber}`
+                        : 'Confirm & Book Order for Dukan'}
+                    </span>
                   </>
                 )}
               </button>
@@ -617,7 +698,7 @@ export default function SalesmanOrderTakingPage() {
 
             <div>
               <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
-                ORDER BOOKED SUCCESSFULLY
+                {existingTodayOrder ? `BILL #${completedOrder.orderNumber} UPDATED (NO DUPLICATE)` : 'ORDER BOOKED SUCCESSFULLY'}
               </span>
               <h3 className="text-lg font-black text-slate-900 mt-1">
                 {completedOrder.orderNumber}

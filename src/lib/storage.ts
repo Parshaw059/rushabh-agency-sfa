@@ -371,6 +371,67 @@ export const createSalesmanOrder = (params: {
   return newOrder;
 };
 
+// Find today's existing order for a dukan (if any)
+export const getTodayOrderByDukan = (dukanId: string): Order | undefined => {
+  const orders = getStoredOrders();
+  return orders.find((o) => o.dukanId === dukanId && isDateToday(o.createdAt));
+};
+
+// Salesman Feature: Update existing bill (Add/modify items on previous bill of today without duplicate bill)
+export const updateSalesmanOrder = (
+  orderId: string,
+  params: {
+    items: OrderItemRecord[];
+    notes?: string;
+  }
+): Order => {
+  const orders = getStoredOrders();
+  const orderIdx = orders.findIndex((o) => o.id === orderId);
+  if (orderIdx === -1) {
+    throw new Error('Order not found');
+  }
+
+  const totalBoxes = params.items.reduce((sum, item) => sum + item.boxQty, 0);
+  const totalLoose = params.items.reduce((sum, item) => sum + item.looseQty, 0);
+  const totalUnits = params.items.reduce((sum, item) => sum + item.totalUnits, 0);
+  const totalMrpValue = params.items.reduce((sum, item) => sum + item.lineMrpTotal, 0);
+
+  const existing = orders[orderIdx];
+  const updatedOrder: Order = {
+    ...existing,
+    items: params.items,
+    totalBoxes,
+    totalLoose,
+    totalUnits,
+    totalMrpValue,
+    notes: params.notes !== undefined ? params.notes : existing.notes,
+  };
+
+  orders[orderIdx] = updatedOrder;
+  saveOrders(orders);
+
+  // Update dukan record with updated bill details
+  updateDukanOrderRecord(updatedOrder.dukanId, {
+    visitStatus: 'ORDER_BOOKED',
+    lastOrderAmount: totalMrpValue,
+    lastOrderNumber: updatedOrder.orderNumber,
+    lastOrderId: updatedOrder.id,
+    lastOrderDate: updatedOrder.createdAt,
+    lastOrderTime: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+  });
+
+  // Sync update to backend
+  if (isBrowser && navigator.onLine) {
+    fetch(`/api/orders/${orderId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: params.items, notes: params.notes }),
+    }).catch(() => {});
+  }
+
+  return updatedOrder;
+};
+
 // Owner Feature: Edit Quantities of a Booked Order (if godown stock is short)
 export const updateOrderItems = (
   orderId: string,
