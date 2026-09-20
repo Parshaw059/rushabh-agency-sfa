@@ -1,0 +1,440 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { Order, User, OrderItemRecord } from '@/types';
+import {
+  getCurrentUser,
+  getStoredOrders,
+  syncOrdersWithBackend,
+  updateOrderItems,
+  generateWdmsSalesmanCsv,
+} from '@/lib/storage';
+import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink } from '@/utils/generatePdfReceipt';
+import { MobileHeader } from '@/components/MobileHeader';
+import { MobileBottomNav } from '@/components/MobileBottomNav';
+import { OrderSlipModal } from '@/components/OrderSlipModal';
+import {
+  FileSpreadsheet,
+  Download,
+  Share2,
+  Edit,
+  Eye,
+  CheckCircle2,
+  Clock,
+  Filter,
+  Layers,
+  X,
+  Plus,
+  Minus,
+  Check,
+  Building2,
+} from 'lucide-react';
+
+export default function OwnerOrdersPage() {
+  const router = useRouter();
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [selectedTripFilter, setSelectedTripFilter] = useState<string>('all');
+  const [activeOrderForDetail, setActiveOrderForDetail] = useState<Order | null>(null);
+  const [slipModalOrder, setSlipModalOrder] = useState<Order | null>(null);
+
+  // Edit Order Quantities State (Owner adjust box/loose if stock is short)
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [editableItems, setEditableItems] = useState<OrderItemRecord[]>([]);
+  const [notification, setNotification] = useState<string | null>(null);
+
+  useEffect(() => {
+    const user = getCurrentUser();
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+    setCurrentUser(user);
+    setOrders(getStoredOrders());
+
+    // Sync latest orders from MySQL
+    syncOrdersWithBackend().then((fresh) => {
+      if (fresh && fresh.length > 0) {
+        setOrders(fresh);
+      }
+    });
+  }, [router]);
+
+  // Open Edit Order Quantities Modal
+  const handleOpenEditOrder = (order: Order) => {
+    setEditingOrder(order);
+    setEditableItems(JSON.parse(JSON.stringify(order.items)));
+  };
+
+  // Adjust Box/Loose inside the order
+  const handleAdjustItemQty = (
+    index: number,
+    field: 'boxQty' | 'looseQty',
+    delta: number
+  ) => {
+    setEditableItems((prev) => {
+      const copy = [...prev];
+      const target = copy[index];
+      const nextVal = Math.max(0, target[field] + delta);
+      target[field] = nextVal;
+      target.totalUnits = target.boxQty * target.unitsPerBox + target.looseQty;
+      target.lineMrpTotal = target.totalUnits * target.mrp;
+      return copy;
+    });
+  };
+
+  // Save Adjusted Order Quantities
+  const handleSaveOrderAdjustment = () => {
+    if (!editingOrder) return;
+    const updatedOrders = updateOrderItems(editingOrder.id, editableItems);
+    setOrders(updatedOrders);
+    setEditingOrder(null);
+    setNotification(`Successfully updated quantities for Order #${editingOrder.orderNumber}!`);
+    setTimeout(() => setNotification(null), 3500);
+  };
+
+  // 1-Click Export to WDMS CSV
+  const handleExportWdms = () => {
+    const csv = generateWdmsSalesmanCsv(filteredOrders);
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `WDMS_Salesman_Bookings_${new Date().toISOString().substring(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setNotification('WDMS CSV Exported! Contains Box count, Loose pieces, and MRP.');
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const trips = Array.from(new Set(orders.map((o) => o.tripName)));
+
+  const filteredOrders = orders.filter((o) => {
+    if (selectedTripFilter !== 'all' && o.tripName !== selectedTripFilter) return false;
+    return true;
+  });
+
+  const totalBoxes = filteredOrders.reduce((sum, o) => sum + o.totalBoxes, 0);
+  const totalUnits = filteredOrders.reduce((sum, o) => sum + o.totalUnits, 0);
+  const totalMrpValue = filteredOrders.reduce((sum, o) => sum + o.totalMrpValue, 0);
+
+  return (
+    <div className="flex-1 flex flex-col pb-20 bg-[#F8FAFC]">
+      <MobileHeader
+        title="Field Booked Orders"
+        subtitle="All Salesmen & Trips"
+        showBack={false}
+        currentUser={currentUser}
+      />
+
+      <main className="p-4 space-y-4">
+        {/* Export & Summary Bar */}
+        <div className="bg-white rounded-3xl p-4 border border-slate-200/90 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-black uppercase text-purple-700 bg-purple-50 border border-purple-200/80 px-2 py-0.5 rounded-full block tracking-wider w-fit">
+                WDMS BILLING DESK
+              </span>
+              <h2 className="text-sm font-black text-slate-900 mt-1">
+                Live Salesman Bookings
+              </h2>
+            </div>
+
+            <button
+              onClick={handleExportWdms}
+              className="py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-700/20 active:scale-[0.98]"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>WDMS Export</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-center">
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/60">
+              <span className="text-[9px] text-slate-500 font-bold block uppercase tracking-wider">Orders</span>
+              <span className="text-sm font-black text-slate-900">{filteredOrders.length}</span>
+            </div>
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/60">
+              <span className="text-[9px] text-slate-500 font-bold block uppercase tracking-wider">Peti (Boxes)</span>
+              <span className="text-sm font-black text-indigo-700">{totalBoxes} Box</span>
+            </div>
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/60">
+              <span className="text-[9px] text-slate-500 font-bold block uppercase tracking-wider">Total MRP</span>
+              <span className="text-xs font-black text-emerald-700 truncate">₹{totalMrpValue.toFixed(0)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Notification */}
+        {notification && (
+          <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 p-3 rounded-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span>{notification}</span>
+          </div>
+        )}
+
+        {/* Filter Trip */}
+        <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between text-xs">
+          <span className="font-bold text-slate-700 flex items-center gap-1">
+            <Filter className="w-3.5 h-3.5 text-slate-400" />
+            Trip Filter:
+          </span>
+          <select
+            value={selectedTripFilter}
+            onChange={(e) => setSelectedTripFilter(e.target.value)}
+            className="px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 font-bold text-slate-800"
+          >
+            <option value="all">All Trips ({orders.length} orders)</option>
+            {trips.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Orders List */}
+        <div className="space-y-3">
+          {filteredOrders.length === 0 ? (
+            <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center">
+              <p className="text-slate-500 text-xs font-bold">
+                No orders booked for this filter yet.
+              </p>
+            </div>
+          ) : (
+            filteredOrders.map((order) => (
+              <div
+                key={order.id}
+                className="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm space-y-3"
+              >
+                <div className="flex items-start justify-between border-b border-slate-100 pb-2.5">
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="font-black text-slate-900 text-xs sm:text-sm">
+                        {order.orderNumber}
+                      </span>
+                      <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded">
+                        {new Date(order.createdAt).toLocaleDateString('en-IN')}
+                      </span>
+                    </div>
+
+                    <h3 className="font-black text-slate-900 text-sm leading-snug">
+                      {order.dukanName}
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Salesman: <strong className="text-slate-700">{order.salesmanName}</strong> • {order.tripName}
+                    </p>
+                  </div>
+
+                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Booked
+                  </span>
+                </div>
+
+                {/* Quantities Overview */}
+                <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200/80 flex items-center justify-between text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block uppercase">
+                      Ordered Quantities
+                    </span>
+                    <span className="font-black text-slate-900">
+                      {order.totalBoxes} Boxes + {order.totalLoose} Loose = <strong className="text-emerald-700">{order.totalUnits} Pcs</strong>
+                    </span>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-400 font-bold block uppercase">
+                      Est. Total MRP
+                    </span>
+                    <span className="text-sm font-black text-slate-900">
+                      ₹{order.totalMrpValue.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Action Buttons: View Slip, PDF, Download, WhatsApp & Edit Quantities */}
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center gap-1.5">
+                    {/* View Slip in App (No download) */}
+                    <button
+                      onClick={() => setSlipModalOrder(order)}
+                      className="flex-1 py-2 px-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center justify-center gap-1 shadow-sm transition-all"
+                      title="View order slip on screen without downloading"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>👁️ View Slip</span>
+                    </button>
+
+                    {/* View PDF in new browser tab */}
+                    <button
+                      onClick={() => viewOrderPdf(order)}
+                      className="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-black text-xs flex items-center justify-center gap-1 shadow-xs transition-colors"
+                      title="Open PDF document in browser"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>PDF</span>
+                    </button>
+
+                    {/* Download PDF file */}
+                    <button
+                      onClick={() => generateOrderPdf(order)}
+                      className="py-2 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-1 shadow-xs transition-colors"
+                      title="Download PDF file"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => window.open(generateWhatsAppShareLink(order), '_blank')}
+                      className="flex-1 py-1.5 px-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white text-xs font-bold flex items-center justify-center gap-1 shadow-xs"
+                      title="Send WhatsApp Order"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>WhatsApp Share</span>
+                    </button>
+
+                    {/* Owner Edit Quantities Button */}
+                    <button
+                      onClick={() => handleOpenEditOrder(order)}
+                      className="py-1.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs flex items-center gap-1 border border-slate-200"
+                      title="Change ordered box or loose quantity"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                      <span>Edit Qty</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </main>
+
+      {/* Owner Edit Order Quantities Modal (User requirement: owner can change quantity of product box too) */}
+      {editingOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="max-w-md w-full bg-white rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">
+                  ADJUST ORDER QUANTITIES
+                </span>
+                <h3 className="text-sm font-black text-slate-900 mt-1">
+                  Order #{editingOrder.orderNumber} • {editingOrder.dukanName}
+                </h3>
+              </div>
+              <button
+                onClick={() => setEditingOrder(null)}
+                className="p-1 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Adjust boxes (peti) or loose pieces if physical godown stock is short before generating WDMS bill:
+            </p>
+
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {editableItems.map((item, idx) => (
+                <div key={item.productId} className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <span className="font-black text-slate-900 block leading-tight">
+                        {item.productName}
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        {item.companyName} • 1 Box = {item.unitsPerBox} pcs
+                      </span>
+                    </div>
+                    <span className="font-black text-slate-900">
+                      ₹{item.lineMrpTotal.toFixed(2)}
+                    </span>
+                  </div>
+
+                  {/* Quantity adjustment controls */}
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200/60">
+                    <div className="flex items-center justify-between bg-white p-1.5 rounded-xl border border-slate-200">
+                      <span className="text-[10px] font-bold text-slate-500">Box:</span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustItemQty(idx, 'boxQty', -1)}
+                          className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center font-bold"
+                        >
+                          -
+                        </button>
+                        <span className="font-black text-xs w-5 text-center">{item.boxQty}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustItemQty(idx, 'boxQty', 1)}
+                          className="w-6 h-6 rounded bg-emerald-600 text-white flex items-center justify-center font-bold"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-white p-1.5 rounded-xl border border-slate-200">
+                      <span className="text-[10px] font-bold text-slate-500">Loose:</span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustItemQty(idx, 'looseQty', -1)}
+                          className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center font-bold"
+                        >
+                          -
+                        </button>
+                        <span className="font-black text-xs w-5 text-center">{item.looseQty}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustItemQty(idx, 'looseQty', 1)}
+                          className="w-6 h-6 rounded bg-emerald-600 text-white flex items-center justify-center font-bold"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-1.5 text-right text-[10px] font-bold text-emerald-800">
+                    Total: {item.totalUnits} Units
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex gap-2">
+              <button
+                onClick={handleSaveOrderAdjustment}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-sm flex items-center justify-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>Save Adjusted Quantities</span>
+              </button>
+              <button
+                onClick={() => setEditingOrder(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Order Slip Preview Modal (No Download Needed) */}
+      <OrderSlipModal
+        order={slipModalOrder}
+        isOpen={Boolean(slipModalOrder)}
+        onClose={() => setSlipModalOrder(null)}
+      />
+
+      <MobileBottomNav currentUser={currentUser} />
+    </div>
+  );
+}

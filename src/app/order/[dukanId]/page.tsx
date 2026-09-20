@@ -1,0 +1,686 @@
+'use client';
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { Dukan, Product, CartItem, User, Order } from '@/types';
+import { INITIAL_COMPANIES } from '@/data/mockData';
+import {
+  getCurrentUser,
+  getDukanById,
+  getStoredProducts,
+  createSalesmanOrder,
+} from '@/lib/storage';
+import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink } from '@/utils/generatePdfReceipt';
+import { MobileHeader } from '@/components/MobileHeader';
+import { OrderSlipModal } from '@/components/OrderSlipModal';
+import {
+  Search,
+  Plus,
+  Minus,
+  Check,
+  ShoppingBag,
+  Layers,
+  ArrowRight,
+  X,
+  Trash2,
+  FileText,
+  Download,
+  Share2,
+  CheckCircle2,
+  Building2,
+  Tag,
+  Eye,
+} from 'lucide-react';
+import confetti from 'canvas-confetti';
+
+export default function SalesmanOrderTakingPage() {
+  const params = useParams();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const dukanId = params.dukanId as string;
+  const tripIdFromUrl = searchParams.get('tripId') || 'trip-1';
+
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [dukan, setDukan] = useState<Dukan | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('dabur');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Cart / Order Indent state
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Completed order for receipt popup
+  const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
+  const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const [showSlipModal, setShowSlipModal] = useState(false);
+
+  useEffect(() => {
+    const user = getCurrentUser();
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+    setCurrentUser(user);
+
+    const foundDukan = getDukanById(dukanId);
+    if (!foundDukan) {
+      router.push('/trips');
+      return;
+    }
+    setDukan(foundDukan);
+    setProducts(getStoredProducts());
+  }, [dukanId, router]);
+
+  // Add / Update item in cart (Box + Loose)
+  const handleUpdateItem = (product: Product, boxQty: number, looseQty: number) => {
+    const totalUnits = boxQty * product.unitsPerBox + looseQty;
+
+    setCartItems((prev) => {
+      const existingIdx = prev.findIndex((item) => item.product.id === product.id);
+
+      if (totalUnits === 0) {
+        return prev.filter((item) => item.product.id !== product.id);
+      }
+
+      const updated: CartItem = {
+        product,
+        boxQty,
+        looseQty,
+        totalUnits,
+        lineMrpTotal: totalUnits * product.mrp,
+      };
+
+      if (existingIdx >= 0) {
+        const next = [...prev];
+        next[existingIdx] = updated;
+        return next;
+      } else {
+        return [...prev, updated];
+      }
+    });
+  };
+
+  // Submit order to database
+  const handleSubmitOrder = () => {
+    if (!currentUser || !dukan || cartItems.length === 0) return;
+    setIsSubmitting(true);
+
+    try {
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
+    } catch (e) {}
+
+    const orderItemRecords = cartItems.map((c) => ({
+      productId: c.product.id,
+      wdmsCode: c.product.wdmsCode,
+      companyName: c.product.companyName,
+      productName: c.product.name,
+      packSize: c.product.packSize,
+      unitsPerBox: c.product.unitsPerBox,
+      boxQty: c.boxQty,
+      looseQty: c.looseQty,
+      totalUnits: c.totalUnits,
+      mrp: c.product.mrp,
+      lineMrpTotal: c.lineMrpTotal,
+    }));
+
+    const newOrder = createSalesmanOrder({
+      tripId: dukan.tripId || tripIdFromUrl,
+      tripName: `Trip ${dukan.tripId ? dukan.tripId.replace('trip-', '') : '1'} Beat`,
+      dukan,
+      salesman: currentUser,
+      items: orderItemRecords,
+      notes,
+    });
+
+    setTimeout(() => {
+      setCompletedOrder(newOrder);
+      setCartItems([]);
+      setIsReviewOpen(false);
+      setIsSubmitting(false);
+      setIsReceiptOpen(true);
+    }, 500);
+  };
+
+  // Active Company
+  const activeCompany = useMemo(() => {
+    return INITIAL_COMPANIES.find((c) => c.id === selectedCompanyId) || INITIAL_COMPANIES[0];
+  }, [selectedCompanyId]);
+
+  // Products filtered by selected company & search query
+  const displayedProducts = useMemo(() => {
+    return products.filter((p) => {
+      if (p.companyId !== selectedCompanyId) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        return (
+          p.name.toLowerCase().includes(q) ||
+          p.wdmsCode.toLowerCase().includes(q) ||
+          p.category.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [products, selectedCompanyId, searchQuery]);
+
+  // Cart Metrics
+  const totalCartBoxes = cartItems.reduce((sum, i) => sum + i.boxQty, 0);
+  const totalCartLoose = cartItems.reduce((sum, i) => sum + i.looseQty, 0);
+  const totalCartUnits = cartItems.reduce((sum, i) => sum + i.totalUnits, 0);
+  const totalCartMrpValue = cartItems.reduce((sum, i) => sum + i.lineMrpTotal, 0);
+
+  // Group items by company for Review
+  const reviewByCompany: { [comp: string]: CartItem[] } = {};
+  cartItems.forEach((item) => {
+    const cName = item.product.companyName;
+    if (!reviewByCompany[cName]) reviewByCompany[cName] = [];
+    reviewByCompany[cName].push(item);
+  });
+
+  if (!currentUser || !dukan) return null;
+
+  return (
+    <div className="flex-1 flex flex-col pb-28 bg-[#F8FAFC]">
+      {/* Mobile Header */}
+      <MobileHeader
+        title={dukan.shopName}
+        subtitle={`Order Taking • ${dukan.ownerName}`}
+        showBack={true}
+        backHref={`/trips/${dukan.tripId || tripIdFromUrl}`}
+        currentUser={currentUser}
+      />
+
+      {/* Main Order Content */}
+      <main className="p-3 space-y-3">
+        {/* Dukan & MRP Only Reminder Banner */}
+        <div className="bg-white rounded-2xl p-3 border border-slate-200/90 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase text-emerald-700 block tracking-wider">
+              FIELD ORDER ENTRY
+            </span>
+            <h2 className="text-xs font-black text-slate-900 truncate max-w-[210px]">
+              {dukan.shopName}
+            </h2>
+          </div>
+          <span className="text-[10px] font-black bg-emerald-50 text-emerald-800 border border-emerald-300/80 px-2.5 py-1 rounded-lg shadow-2xs">
+            MRP DISPLAY ONLY
+          </span>
+        </div>
+
+        {/* 16 FMCG Company Selector Bar */}
+        <div className="bg-white p-2.5 rounded-2xl border border-slate-200/90 shadow-xs space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[11px] font-black text-slate-600 uppercase tracking-wider">
+              Select Company / Brand (16 Brands):
+            </span>
+            <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-bold border border-emerald-200/80">
+              {INITIAL_COMPANIES.length} Brands
+            </span>
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+            {INITIAL_COMPANIES.map((comp) => {
+              const isSelected = selectedCompanyId === comp.id;
+              const inCartCount = cartItems
+                .filter((item) => item.product.companyId === comp.id)
+                .reduce((sum, item) => sum + item.totalUnits, 0);
+
+              return (
+                <button
+                  key={comp.id}
+                  onClick={() => {
+                    setSelectedCompanyId(comp.id);
+                    setSearchQuery('');
+                  }}
+                  className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 border shadow-2xs ${
+                    isSelected
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-transparent shadow-md shadow-emerald-700/20 ring-2 ring-emerald-400/30'
+                      : 'bg-slate-50 text-slate-700 border-slate-200/90 hover:bg-emerald-50/50'
+                  }`}
+                >
+                  <span className={`w-2.5 h-2.5 rounded-full ${comp.badgeColor}`} />
+                  <span>{comp.name.split(' ')[0]}</span>
+                  {inCartCount > 0 && (
+                    <span className="bg-white text-emerald-800 text-[9px] font-black px-1.5 py-0.2 rounded-full shadow-2xs">
+                      {inCartCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Active Company & Search Bar */}
+        <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={`w-3 h-3 rounded-full ${activeCompany.badgeColor}`} />
+              <h3 className="font-black text-slate-900 text-sm">
+                {activeCompany.name}
+              </h3>
+            </div>
+            <span className="text-[10px] text-slate-400 font-bold">
+              {displayedProducts.length} Items Available
+            </span>
+          </div>
+
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={`Search ${activeCompany.name.split(' ')[0]} products...`}
+              className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+        </div>
+
+        {/* Product Cards List */}
+        <div className="space-y-3">
+          {displayedProducts.length === 0 ? (
+            <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center">
+              <p className="text-slate-500 text-xs font-bold">
+                No products found in this company matching &quot;{searchQuery}&quot;.
+              </p>
+            </div>
+          ) : (
+            displayedProducts.map((product) => {
+              const currentCartItem = cartItems.find((c) => c.product.id === product.id);
+              const boxQty = currentCartItem ? currentCartItem.boxQty : 0;
+              const looseQty = currentCartItem ? currentCartItem.looseQty : 0;
+              const totalUnits = boxQty * product.unitsPerBox + looseQty;
+              const lineMrpTotal = totalUnits * product.mrp;
+
+              return (
+                <div
+                  key={product.id}
+                  className={`bg-white rounded-2xl p-3.5 border transition-all shadow-xs ${
+                    totalUnits > 0
+                      ? 'border-emerald-500 ring-1 ring-emerald-500/30 bg-emerald-50/10'
+                      : 'border-slate-200'
+                  }`}
+                >
+                  {/* Item Header */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded border border-slate-200">
+                          {product.wdmsCode}
+                        </span>
+                        <span className="text-[10px] font-semibold text-slate-500">
+                          {product.category}
+                        </span>
+                      </div>
+                      <h4 className="font-black text-slate-900 text-xs sm:text-sm leading-snug">
+                        {product.name}
+                      </h4>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.2 rounded-md">
+                          Pack: {product.packSize}
+                        </span>
+                        <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2 py-0.2 rounded-md border border-emerald-100 flex items-center gap-1">
+                          <Layers className="w-3 h-3 text-emerald-600" />
+                          1 Box = <strong>{product.unitsPerBox} pcs</strong>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Prominent MRP Only */}
+                    <div className="text-right flex-shrink-0 bg-slate-50 p-2 rounded-xl border border-slate-200/80 min-w-[75px]">
+                      <span className="text-[9px] text-slate-400 uppercase font-black tracking-wider block">
+                        MRP Price
+                      </span>
+                      <span className="text-base font-black text-slate-900 block">
+                        ₹{product.mrp.toFixed(2)}
+                      </span>
+                      <span className="text-[9px] text-slate-500 font-semibold block">
+                        per piece
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Quantity Steppers: Box (Peti) + Loose Pieces */}
+                  <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2">
+                    {/* 1. Full Box (Peti) Counter */}
+                    <div className="bg-slate-50 p-2 rounded-xl border border-slate-200/80">
+                      <div className="flex justify-between items-center text-[10px] font-black text-slate-700 mb-1">
+                        <span>Full Box (Peti)</span>
+                        <span className="text-slate-400 font-normal">
+                          {boxQty > 0 ? `${boxQty * product.unitsPerBox} pcs` : `x${product.unitsPerBox}`}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between bg-white rounded-lg p-0.5 border border-slate-200 shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateItem(product, Math.max(0, boxQty - 1), looseQty)}
+                          disabled={boxQty <= 0}
+                          className="w-7 h-7 rounded-md bg-slate-100 disabled:opacity-30 text-slate-700 flex items-center justify-center font-black text-sm"
+                        >
+                          <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="font-black text-xs text-slate-900">
+                          {boxQty}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateItem(product, boxQty + 1, looseQty)}
+                          className="w-7 h-7 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center font-black text-sm shadow-xs"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 2. Loose Pieces Counter */}
+                    <div className="bg-slate-50 p-2 rounded-xl border border-slate-200/80">
+                      <div className="flex justify-between items-center text-[10px] font-black text-slate-700 mb-1">
+                        <span>Loose Pcs</span>
+                        <span className="text-slate-400 font-normal">Single items</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-white rounded-lg p-0.5 border border-slate-200 shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateItem(product, boxQty, Math.max(0, looseQty - 1))}
+                          disabled={looseQty <= 0}
+                          className="w-7 h-7 rounded-md bg-slate-100 disabled:opacity-30 text-slate-700 flex items-center justify-center font-black text-sm"
+                        >
+                          <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="font-black text-xs text-slate-900">
+                          {looseQty}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateItem(product, boxQty, looseQty + 1)}
+                          className="w-7 h-7 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center font-black text-sm shadow-xs"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quick Preset Loose Chips & Subtotal */}
+                  <div className="mt-2 flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] text-slate-400 font-bold uppercase">Quick:</span>
+                      {[1, 3, 6, 12].map((num) => (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => handleUpdateItem(product, boxQty, looseQty + num)}
+                          className="text-[10px] font-black px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-700 active:bg-emerald-50 active:text-emerald-800"
+                        >
+                          +{num}
+                        </button>
+                      ))}
+                    </div>
+
+                    {totalUnits > 0 && (
+                      <div className="text-right">
+                        <span className="text-[10px] text-emerald-800 font-black">
+                          {totalUnits} Pcs = ₹{lineMrpTotal.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </main>
+
+      {/* Floating Bottom Bar (Sticky Order Totals) */}
+      {cartItems.length > 0 && (
+        <div className="fixed bottom-0 max-w-md w-full bg-white/95 backdrop-blur-md text-slate-900 p-3 border-t border-slate-200/90 shadow-[0_-8px_30px_rgba(0,0,0,0.08)] z-30 flex items-center justify-between gap-3 animate-in slide-in-from-bottom duration-150">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-black">
+              <span className="bg-emerald-100 text-emerald-800 border border-emerald-300/80 px-2 py-0.5 rounded-md text-[10px]">
+                {cartItems.length} SKUs
+              </span>
+              <span className="text-slate-700">{totalCartBoxes} Boxes</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-emerald-700 font-extrabold">{totalCartUnits} Total Pcs</span>
+            </div>
+            <div className="text-[11px] text-slate-500 mt-0.5">
+              Est. Total MRP: <strong className="text-slate-900 text-xs font-black">₹{totalCartMrpValue.toFixed(2)}</strong>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setIsReviewOpen(true)}
+            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-xs shadow-md shadow-emerald-700/25 flex items-center gap-1.5 transition-all active:scale-[0.98]"
+          >
+            <span>Review Order</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Review Drawer Modal */}
+      {isReviewOpen && (
+        <div className="fixed inset-0 z-50 overflow-hidden flex justify-center bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="max-w-md w-full bg-white flex flex-col h-full shadow-2xl">
+            {/* Header */}
+            <div className="bg-white text-slate-900 p-4 flex items-center justify-between border-b border-slate-200">
+              <div>
+                <h3 className="font-black text-sm leading-tight">Review Field Order</h3>
+                <p className="text-xs text-emerald-700 font-bold">{dukan.shopName}</p>
+              </div>
+              <button
+                onClick={() => setIsReviewOpen(false)}
+                className="p-1 rounded-xl bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Items List Grouped by Company */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F8FAFC]">
+              {Object.keys(reviewByCompany).map((companyName) => {
+                const cItems = reviewByCompany[companyName];
+                const cBoxes = cItems.reduce((s, i) => s + i.boxQty, 0);
+                const cUnits = cItems.reduce((s, i) => s + i.totalUnits, 0);
+                const cTotal = cItems.reduce((s, i) => s + i.lineMrpTotal, 0);
+
+                return (
+                  <div key={companyName} className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
+                    <div className="bg-gradient-to-r from-slate-100 via-emerald-50/50 to-slate-100 text-slate-800 border-b border-slate-200/80 px-3 py-2 flex items-center justify-between text-xs font-black">
+                      <span>{companyName}</span>
+                      <span className="text-emerald-800 text-[11px] font-extrabold bg-white px-2 py-0.5 rounded-full border border-emerald-200/60 shadow-2xs">
+                        {cBoxes} Box | {cUnits} Pcs • ₹{cTotal.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div className="divide-y divide-slate-200/80 p-2">
+                      {cItems.map((item) => (
+                        <div key={item.product.id} className="py-2 flex items-center justify-between text-xs">
+                          <div>
+                            <span className="font-black text-slate-900 block leading-tight">
+                              {item.product.name}
+                            </span>
+                            <span className="text-[10px] text-slate-500">
+                              {item.boxQty > 0 ? `${item.boxQty} Box ` : ''}
+                              {item.looseQty > 0 ? `+ ${item.looseQty} Loose ` : ''}
+                              = <strong>{item.totalUnits} Pcs</strong> @ ₹{item.product.mrp}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-slate-900 text-xs">
+                              ₹{item.lineMrpTotal.toFixed(2)}
+                            </span>
+                            <button
+                              onClick={() => handleUpdateItem(item.product, 0, 0)}
+                              className="text-slate-400 hover:text-red-600 p-1"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Salesman Notes */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Salesman Note (Optional):
+                </label>
+                <input
+                  type="text"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="e.g. Urgent morning tempo delivery"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Summary Matrix */}
+              <div className="bg-emerald-50 rounded-2xl p-3 border border-emerald-200 space-y-1 text-xs">
+                <div className="flex justify-between text-emerald-900 font-semibold">
+                  <span>Total Full Boxes (Peti):</span>
+                  <span className="font-black">{totalCartBoxes} Boxes</span>
+                </div>
+                <div className="flex justify-between text-emerald-900 font-semibold">
+                  <span>Total Loose Pieces:</span>
+                  <span className="font-black">{totalCartLoose} Pcs</span>
+                </div>
+                <div className="flex justify-between text-emerald-900 font-semibold">
+                  <span>Total Ordered Units:</span>
+                  <span className="font-black text-emerald-800">{totalCartUnits} Pieces</span>
+                </div>
+                <div className="border-t border-emerald-200 pt-1.5 flex justify-between items-baseline">
+                  <span className="font-black text-slate-900 text-sm">Estimated Total MRP:</span>
+                  <span className="font-black text-emerald-800 text-lg">
+                    ₹{totalCartMrpValue.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="p-3 bg-slate-50 border-t border-slate-200 space-y-2">
+              <button
+                onClick={handleSubmitOrder}
+                disabled={isSubmitting}
+                className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-md flex items-center justify-center gap-2"
+              >
+                {isSubmitting ? (
+                  <span>Saving Order...</span>
+                ) : (
+                  <>
+                    <FileText className="w-4 h-4" />
+                    <span>Confirm & Book Order for Dukan</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => setIsReviewOpen(false)}
+                className="w-full py-2 text-xs text-slate-600 font-bold hover:underline text-center"
+              >
+                + Add More Products
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Post-Order Receipt Modal */}
+      {isReceiptOpen && completedOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="max-w-md w-full bg-white rounded-3xl p-5 shadow-2xl border border-slate-200 text-center space-y-4">
+            <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-sm">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                ORDER BOOKED SUCCESSFULLY
+              </span>
+              <h3 className="text-lg font-black text-slate-900 mt-1">
+                {completedOrder.orderNumber}
+              </h3>
+              <p className="text-xs text-slate-600 mt-0.5">
+                Dukan: <strong>{completedOrder.dukanName}</strong>
+              </p>
+              <p className="text-[11px] text-slate-500">
+                {completedOrder.totalBoxes} Boxes • {completedOrder.totalLoose} Loose • {completedOrder.totalUnits} Total Pcs
+              </p>
+            </div>
+
+            {/* 1-Click Action Buttons: View, Download, WhatsApp */}
+            <div className="space-y-2 pt-2">
+              {/* Primary: View Order Slip In-App (No Download Needed) */}
+              <button
+                onClick={() => setShowSlipModal(true)}
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-700/20 active:scale-[0.98] transition-all"
+              >
+                <Eye className="w-4 h-4" />
+                <span>👁️ View Order Slip (No Download)</span>
+              </button>
+
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  onClick={() => viewOrderPdf(completedOrder)}
+                  className="py-2.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-black text-[11px] flex items-center justify-center gap-1 shadow-xs transition-colors"
+                  title="Open raw PDF in new browser tab"
+                >
+                  <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>PDF Tab</span>
+                </button>
+
+                <button
+                  onClick={() => generateOrderPdf(completedOrder)}
+                  className="py-2.5 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 font-black text-[11px] flex items-center justify-center gap-1 shadow-xs transition-colors"
+                  title="Save PDF file to phone downloads"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Download</span>
+                </button>
+
+                <button
+                  onClick={() => window.open(generateWhatsAppShareLink(completedOrder), '_blank')}
+                  className="py-2.5 px-2 rounded-xl bg-green-500 hover:bg-green-600 text-white font-black text-[11px] flex items-center justify-center gap-1 shadow-xs transition-colors"
+                  title="Share order summary to Rushabh Agency via WhatsApp"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>WhatsApp</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100">
+              <button
+                onClick={() => router.push(`/trips/${dukan.tripId || tripIdFromUrl}`)}
+                className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-black text-xs flex items-center justify-center gap-1.5 transition-all"
+              >
+                <span>Back to Trip (Next Dukan)</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Order Slip Modal (Preview Without Download) */}
+      <OrderSlipModal
+        order={completedOrder}
+        isOpen={showSlipModal}
+        onClose={() => setShowSlipModal(false)}
+      />
+    </div>
+  );
+}
