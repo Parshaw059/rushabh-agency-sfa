@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Trip, User, Dukan } from '@/types';
-import { getCurrentUser, getStoredTrips, getStoredDukans } from '@/lib/storage';
+import { Trip, User } from '@/types';
+import { getCurrentUser, getStoredTrips, getDukansWithDailyStatus, DukanDailyStatus } from '@/lib/storage';
 import { MobileHeader } from '@/components/MobileHeader';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import {
@@ -15,13 +15,14 @@ import {
   Clock,
   Navigation,
   Sparkles,
+  TrendingUp,
 } from 'lucide-react';
 
 export default function TripsPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [trips, setTrips] = useState<Trip[]>([]);
-  const [dukans, setDukans] = useState<Dukan[]>([]);
+  const [dukans, setDukans] = useState<DukanDailyStatus[]>([]);
 
   useEffect(() => {
     const user = getCurrentUser();
@@ -31,8 +32,12 @@ export default function TripsPage() {
     }
     setCurrentUser(user);
     setTrips(getStoredTrips());
-    setDukans(getStoredDukans());
+    setDukans(getDukansWithDailyStatus());
   }, [router]);
+
+  const totalDukanCount = dukans.length;
+  const totalBookedToday = dukans.filter((d) => d.isBookedToday).length;
+  const totalPendingToday = totalDukanCount - totalBookedToday;
 
   if (!currentUser) return null;
 
@@ -45,24 +50,44 @@ export default function TripsPage() {
       />
 
       <main className="p-4 space-y-4">
-        {/* Salesman Trip Banner */}
+        {/* Salesman Trip Banner with Daily Pending/Booked Counters */}
         <div className="bg-gradient-to-r from-emerald-700 via-teal-700 to-emerald-800 rounded-3xl p-4 text-white shadow-lg shadow-emerald-900/15 relative overflow-hidden">
           <div className="absolute right-0 top-0 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none" />
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-1.5">
               <span className="text-[10px] font-black uppercase bg-white/20 backdrop-blur-xs px-2.5 py-0.5 rounded-full text-emerald-100 border border-white/20">
-                Field Order Taking
+                Daily Beat Tracking
               </span>
               <span className="text-[10px] text-emerald-200 font-mono tracking-wider">
-                DAILY BEAT
+                TODAY
               </span>
             </div>
             <h2 className="text-lg font-black leading-tight text-white">
-              Select Your Assigned Trip / Route
+              Select Your Assigned Route
             </h2>
             <p className="text-xs text-emerald-100/90 mt-1 font-medium">
-              Choose the beat to view retail dukans and start booking orders.
+              Orders stay saved for the whole day so you can track which shops are pending.
             </p>
+
+            {/* Daily Overall Pending & Booked KPIs */}
+            <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-white/20">
+              <div className="bg-white/10 backdrop-blur-xs rounded-2xl p-2.5 text-center">
+                <span className="text-[10px] uppercase font-bold text-amber-300 block">
+                  ⏳ Today's Pending
+                </span>
+                <span className="text-lg font-black text-amber-300">
+                  {totalPendingToday} Shops
+                </span>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xs rounded-2xl p-2.5 text-center">
+                <span className="text-[10px] uppercase font-bold text-emerald-200 block">
+                  ✅ Orders Booked
+                </span>
+                <span className="text-lg font-black text-white">
+                  {totalBookedToday} Shops
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -73,13 +98,15 @@ export default function TripsPage() {
               Available Routes ({trips.length})
             </span>
             <span className="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/80">
-              Tap trip to view dukans
+              Tap trip to view pending shops
             </span>
           </div>
 
           {trips.map((trip) => {
             const tripDukans = dukans.filter((d) => d.tripId === trip.id);
-            const bookedDukans = tripDukans.filter((d) => d.visitStatus === 'ORDER_BOOKED').length;
+            const bookedDukans = tripDukans.filter((d) => d.isBookedToday).length;
+            const pendingDukans = tripDukans.length - bookedDukans;
+            const tripPercent = tripDukans.length > 0 ? Math.round((bookedDukans / tripDukans.length) * 100) : 0;
             const isAssigned = currentUser.assignedTripId === trip.id;
 
             return (
@@ -128,23 +155,30 @@ export default function TripsPage() {
                   <ChevronRight className="w-5 h-5 text-slate-400 flex-shrink-0 mt-3" />
                 </div>
 
-                {/* Progress bar inside trip */}
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <span className="text-slate-600 font-medium flex items-center gap-1">
-                    <Store className="w-3.5 h-3.5 text-slate-400" />
-                    Total Dukans: <strong>{tripDukans.length}</strong>
-                  </span>
+                {/* Progress bar & Pending / Booked tags */}
+                <div className="mt-3.5 pt-3 border-t border-slate-100 space-y-2">
+                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all"
+                      style={{ width: `${tripPercent}%` }}
+                    />
+                  </div>
 
-                  <span
-                    className={`font-black text-xs px-2 py-0.5 rounded-lg flex items-center gap-1 ${
-                      bookedDukans > 0
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    {bookedDukans} / {tripDukans.length} Booked
-                  </span>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-600 font-medium flex items-center gap-1">
+                      <Store className="w-3.5 h-3.5 text-slate-400" />
+                      <span>{tripDukans.length} Shops</span>
+                    </span>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-[10px] px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                        ⏳ {pendingDukans} Pending
+                      </span>
+                      <span className="font-bold text-[10px] px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        ✅ {bookedDukans} Booked
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </Link>
             );

@@ -2,10 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Order, User, OrderItemRecord } from '@/types';
+import { Order, User, OrderItemRecord, Trip } from '@/types';
 import {
   getCurrentUser,
   getStoredOrders,
+  getStoredTrips,
+  getDukansWithDailyStatus,
+  DukanDailyStatus,
   syncOrdersWithBackend,
   updateOrderItems,
   generateWdmsSalesmanCsv,
@@ -29,12 +32,18 @@ import {
   Minus,
   Check,
   Building2,
+  PhoneCall,
+  Store,
+  MapPin,
 } from 'lucide-react';
 
 export default function OwnerOrdersPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [dukans, setDukans] = useState<DukanDailyStatus[]>([]);
+  const [allTrips, setAllTrips] = useState<Trip[]>([]);
+  const [viewTab, setViewTab] = useState<'ORDERS' | 'PENDING'>('ORDERS');
   const [selectedTripFilter, setSelectedTripFilter] = useState<string>('all');
   const [activeOrderForDetail, setActiveOrderForDetail] = useState<Order | null>(null);
   const [slipModalOrder, setSlipModalOrder] = useState<Order | null>(null);
@@ -52,11 +61,14 @@ export default function OwnerOrdersPage() {
     }
     setCurrentUser(user);
     setOrders(getStoredOrders());
+    setDukans(getDukansWithDailyStatus());
+    setAllTrips(getStoredTrips());
 
     // Sync latest orders from MySQL
     syncOrdersWithBackend().then((fresh) => {
       if (fresh && fresh.length > 0) {
         setOrders(fresh);
+        setDukans(getDukansWithDailyStatus());
       }
     });
   }, [router]);
@@ -108,11 +120,23 @@ export default function OwnerOrdersPage() {
     setTimeout(() => setNotification(null), 3000);
   };
 
-  const trips = Array.from(new Set(orders.map((o) => o.tripName)));
+  const trips = Array.from(
+    new Set([
+      ...allTrips.map((t) => t.name),
+      ...orders.map((o) => o.tripName),
+    ])
+  );
 
   const filteredOrders = orders.filter((o) => {
     if (selectedTripFilter !== 'all' && o.tripName !== selectedTripFilter) return false;
     return true;
+  });
+
+  const pendingDukans = dukans.filter((d) => !d.isBookedToday);
+  const filteredPendingDukans = pendingDukans.filter((d) => {
+    if (selectedTripFilter === 'all') return true;
+    const targetTrip = allTrips.find((t) => t.name === selectedTripFilter);
+    return targetTrip ? d.tripId === targetTrip.id : true;
   });
 
   const totalBoxes = filteredOrders.reduce((sum, o) => sum + o.totalBoxes, 0);
@@ -194,124 +218,216 @@ export default function OwnerOrdersPage() {
           </select>
         </div>
 
-        {/* Orders List */}
-        <div className="space-y-3">
-          {filteredOrders.length === 0 ? (
-            <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center">
-              <p className="text-slate-500 text-xs font-bold">
-                No orders booked for this filter yet.
-              </p>
+        {/* Toggle Mode: Orders Booked vs Pending Shops */}
+        <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100/90 rounded-2xl">
+          <button
+            onClick={() => setViewTab('ORDERS')}
+            className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+              viewTab === 'ORDERS'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Orders Booked ({filteredOrders.length})</span>
+          </button>
+
+          <button
+            onClick={() => setViewTab('PENDING')}
+            className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+              viewTab === 'PENDING'
+                ? 'bg-amber-500 text-white shadow-xs'
+                : 'text-amber-800 hover:bg-amber-100/50'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>Pending Shops ({filteredPendingDukans.length})</span>
+          </button>
+        </div>
+
+        {/* View Mode: PENDING SHOPS TODAY */}
+        {viewTab === 'PENDING' ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs font-black text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" />
+                <span>Pending Shops Today ({filteredPendingDukans.length})</span>
+              </span>
+              <span className="text-[11px] text-slate-500">
+                Awaiting order booking
+              </span>
             </div>
-          ) : (
-            filteredOrders.map((order) => (
-              <div
-                key={order.id}
-                className="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm space-y-3"
-              >
-                <div className="flex items-start justify-between border-b border-slate-100 pb-2.5">
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="font-black text-slate-900 text-xs sm:text-sm">
-                        {order.orderNumber}
-                      </span>
-                      <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded">
-                        {new Date(order.createdAt).toLocaleDateString('en-IN')}
-                      </span>
+
+            {filteredPendingDukans.length === 0 ? (
+              <div className="bg-white p-8 rounded-3xl border border-slate-200 text-center space-y-2 shadow-xs">
+                <CheckCircle2 className="w-10 h-10 mx-auto text-emerald-500" />
+                <h3 className="font-black text-slate-900 text-sm">All Shops Completed!</h3>
+                <p className="text-xs text-slate-500">
+                  Every retailer on this beat has booked an order today.
+                </p>
+              </div>
+            ) : (
+              filteredPendingDukans.map((dukan, idx) => {
+                const tripObj = allTrips.find((t) => t.id === dukan.tripId);
+                const tripName = tripObj ? tripObj.name : dukan.tripId;
+
+                return (
+                  <div
+                    key={dukan.id}
+                    className="bg-white rounded-3xl p-4 border border-amber-200 shadow-xs space-y-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center text-xs font-black flex-shrink-0 mt-0.5">
+                          #{idx + 1}
+                        </div>
+
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded">
+                              {tripName}
+                            </span>
+                            <span className="text-[10px] font-black bg-amber-100 text-amber-800 px-2 py-0.2 rounded-full animate-pulse">
+                              PENDING TODAY
+                            </span>
+                          </div>
+
+                          <h3 className="font-black text-slate-900 text-sm mt-1 leading-snug">
+                            {dukan.shopName}
+                          </h3>
+                          <p className="text-xs text-slate-600 mt-0.5">
+                            Proprietor: <strong>{dukan.ownerName}</strong>
+                          </p>
+                        </div>
+                      </div>
+
+                      <a
+                        href={`tel:${dukan.phone}`}
+                        className="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-colors flex-shrink-0"
+                        title="Call shopkeeper"
+                      >
+                        <PhoneCall className="w-3.5 h-3.5" />
+                        <span>Call: {dukan.phone}</span>
+                      </a>
                     </div>
 
-                    <h3 className="font-black text-slate-900 text-sm leading-snug">
-                      {order.dukanName}
-                    </h3>
-                    <p className="text-[11px] text-slate-500">
-                      Salesman: <strong className="text-slate-700">{order.salesmanName}</strong> • {order.tripName}
-                    </p>
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 pl-10">
+                      <span>{dukan.address}</span>
+                      {dukan.gstNumber && (
+                        <span className="font-mono text-[10px] text-slate-400">GST: {dukan.gstNumber}</span>
+                      )}
+                    </div>
                   </div>
-
-                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Booked
-                  </span>
-                </div>
-
-                {/* Quantities Overview */}
-                <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200/80 flex items-center justify-between text-xs">
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold block uppercase">
-                      Ordered Quantities
-                    </span>
-                    <span className="font-black text-slate-900">
-                      {order.totalBoxes} Boxes + {order.totalLoose} Loose = <strong className="text-emerald-700">{order.totalUnits} Pcs</strong>
-                    </span>
-                  </div>
-
-                  <div className="text-right">
-                    <span className="text-[10px] text-slate-400 font-bold block uppercase">
-                      Est. Total MRP
-                    </span>
-                    <span className="text-sm font-black text-slate-900">
-                      ₹{order.totalMrpValue.toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Action Buttons: View Slip, PDF, Download, WhatsApp & Edit Quantities */}
-                <div className="space-y-1.5 pt-1">
-                  <div className="flex items-center gap-1.5">
-                    {/* View Slip in App (No download) */}
-                    <button
-                      onClick={() => setSlipModalOrder(order)}
-                      className="flex-1 py-2 px-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center justify-center gap-1 shadow-sm transition-all"
-                      title="View order slip on screen without downloading"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>👁️ View Slip</span>
-                    </button>
-
-                    {/* View PDF in new browser tab */}
-                    <button
-                      onClick={() => viewOrderPdf(order)}
-                      className="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-black text-xs flex items-center justify-center gap-1 shadow-xs transition-colors"
-                      title="Open PDF document in browser"
-                    >
-                      <Eye className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>PDF</span>
-                    </button>
-
-                    {/* Download PDF file */}
-                    <button
-                      onClick={() => generateOrderPdf(order)}
-                      className="py-2 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-1 shadow-xs transition-colors"
-                      title="Download PDF file"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>Download</span>
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => shareOrderPdfViaWhatsApp(order)}
-                      className="flex-1 py-1.5 px-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white text-xs font-bold flex items-center justify-center gap-1 shadow-xs"
-                      title="Share official Order PDF directly via WhatsApp"
-                    >
-                      <Share2 className="w-3.5 h-3.5" />
-                      <span>WhatsApp PDF</span>
-                    </button>
-
-                    {/* Owner Edit Quantities Button */}
-                    <button
-                      onClick={() => handleOpenEditOrder(order)}
-                      className="py-1.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs flex items-center gap-1 border border-slate-200"
-                      title="Change ordered box or loose quantity"
-                    >
-                      <Edit className="w-3.5 h-3.5" />
-                      <span>Edit Qty</span>
-                    </button>
-                  </div>
-                </div>
+                );
+              })
+            )}
+          </div>
+        ) : (
+          /* Orders List */
+          <div className="space-y-3">
+            {filteredOrders.length === 0 ? (
+              <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center">
+                <p className="text-slate-500 text-xs font-bold">
+                  No orders booked for this filter yet.
+                </p>
               </div>
-            ))
-          )}
-        </div>
+            ) : (
+              filteredOrders.map((order) => (
+                <div
+                  key={order.id}
+                  className="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm space-y-3"
+                >
+                  <div className="flex items-start justify-between border-b border-slate-100 pb-2.5">
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="font-black text-slate-900 text-xs sm:text-sm">
+                          {order.orderNumber}
+                        </span>
+                        <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                          {order.tripName}
+                        </span>
+                      </div>
+                      <h3 className="font-black text-slate-800 text-sm">
+                        {order.dukanName}
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Salesman: <strong>{order.salesmanName}</strong> • {new Date(order.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+
+                    <span className="text-xs font-black text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                      BOOKED
+                    </span>
+                  </div>
+
+                  {/* Summary of Items */}
+                  <div className="bg-slate-50 rounded-2xl p-3 space-y-1 text-xs">
+                    <div className="flex justify-between font-bold text-slate-600">
+                      <span>Total Peti (Boxes):</span>
+                      <span className="text-slate-900 font-black">{order.totalBoxes} Box</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-slate-600">
+                      <span>Total Loose Items:</span>
+                      <span className="text-slate-900 font-black">{order.totalLoose} pcs</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-slate-600">
+                      <span>Total Units:</span>
+                      <span className="text-slate-900 font-black">{order.totalUnits} pcs</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-slate-900 border-t border-slate-200/60 pt-1 text-xs">
+                      <span>Total MRP Value:</span>
+                      <span className="text-emerald-700 font-black">₹{order.totalMrpValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="pt-2 flex flex-col sm:flex-row gap-2">
+                    <div className="grid grid-cols-2 gap-2 flex-1">
+                      <button
+                        onClick={() => setSlipModalOrder(order)}
+                        className="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center justify-center gap-1 shadow-xs transition-colors"
+                        title="View Order Slip in Modal (No Download)"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>View Slip</span>
+                      </button>
+
+                      <button
+                        onClick={() => generateOrderPdf(order)}
+                        className="py-2 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-1 shadow-xs transition-colors"
+                        title="Download PDF file"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Download</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => shareOrderPdfViaWhatsApp(order)}
+                        className="flex-1 py-1.5 px-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white text-xs font-bold flex items-center justify-center gap-1 shadow-xs"
+                        title="Share official Order PDF directly via WhatsApp"
+                      >
+                        <Share2 className="w-3.5 h-3.5" />
+                        <span>WhatsApp PDF</span>
+                      </button>
+
+                      {/* Owner Edit Quantities Button */}
+                      <button
+                        onClick={() => handleOpenEditOrder(order)}
+                        className="py-1.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs flex items-center gap-1 border border-slate-200"
+                        title="Change ordered box or loose quantity"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        <span>Edit Qty</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </main>
 
       {/* Owner Edit Order Quantities Modal (User requirement: owner can change quantity of product box too) */}

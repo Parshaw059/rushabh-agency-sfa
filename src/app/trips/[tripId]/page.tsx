@@ -3,16 +3,20 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { Trip, Dukan, User } from '@/types';
+import { Trip, Dukan, User, Order } from '@/types';
 import {
   getCurrentUser,
   getStoredTrips,
   getDukansByTrip,
+  getDukansWithDailyStatus,
+  DukanDailyStatus,
+  getStoredOrders,
   addDukan,
   deleteDukan,
 } from '@/lib/storage';
 import { MobileHeader } from '@/components/MobileHeader';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
+import { OrderSlipModal } from '@/components/OrderSlipModal';
 import {
   Store,
   Phone,
@@ -28,6 +32,8 @@ import {
   AlertTriangle,
   PhoneCall,
   Plus,
+  Eye,
+  ListFilter,
 } from 'lucide-react';
 
 export default function TripDukansPage() {
@@ -37,8 +43,13 @@ export default function TripDukansPage() {
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [trip, setTrip] = useState<Trip | null>(null);
-  const [dukans, setDukans] = useState<Dukan[]>([]);
+  const [dukans, setDukans] = useState<DukanDailyStatus[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'BOOKED'>('ALL');
+
+  // Slip Modal Preview State
+  const [selectedSlipOrder, setSelectedSlipOrder] = useState<Order | null>(null);
+  const [showSlipModal, setShowSlipModal] = useState(false);
 
   // Add Dukan Modal State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -54,7 +65,7 @@ export default function TripDukansPage() {
   const [notification, setNotification] = useState<string | null>(null);
 
   const refreshDukans = (tId: string) => {
-    setDukans(getDukansByTrip(tId));
+    setDukans(getDukansWithDailyStatus(tId));
     const allTrips = getStoredTrips();
     const foundTrip = allTrips.find((t) => t.id === tId);
     if (foundTrip) setTrip(foundTrip);
@@ -73,20 +84,33 @@ export default function TripDukansPage() {
     setTrip(foundTrip);
 
     if (foundTrip) {
-      setDukans(getDukansByTrip(foundTrip.id));
+      setDukans(getDukansWithDailyStatus(foundTrip.id));
     }
   }, [tripId, router]);
 
   if (!currentUser || !trip) return null;
 
-  const filteredDukans = dukans.filter(
-    (d) =>
-      d.shopName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      d.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      d.phone.includes(searchQuery)
+  const totalCount = dukans.length;
+  const bookedCount = dukans.filter((d) => d.isBookedToday).length;
+  const pendingCount = totalCount - bookedCount;
+  const percentDone = totalCount > 0 ? Math.round((bookedCount / totalCount) * 100) : 0;
+  const totalSalesToday = dukans.reduce(
+    (sum, d) => sum + (d.isBookedToday && d.lastOrderAmount ? d.lastOrderAmount : 0),
+    0
   );
 
-  const bookedCount = dukans.filter((d) => d.visitStatus === 'ORDER_BOOKED').length;
+  const filteredDukans = dukans.filter((d) => {
+    const matchesSearch =
+      d.shopName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      d.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      d.phone.includes(searchQuery);
+
+    if (!matchesSearch) return false;
+
+    if (statusFilter === 'PENDING') return !d.isBookedToday;
+    if (statusFilter === 'BOOKED') return d.isBookedToday;
+    return true;
+  });
 
   const handleCreateDukan = (e: React.FormEvent) => {
     e.preventDefault();
@@ -167,13 +191,18 @@ export default function TripDukansPage() {
           </div>
         )}
 
-        {/* Trip Overview Card */}
-        <div className="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm space-y-3">
+        {/* Trip Overview Card with Daily Beat Tracking */}
+        <div className="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm space-y-3.5">
           <div className="flex justify-between items-start">
             <div>
-              <span className="text-[10px] font-black uppercase text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                Active Trip Beat
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-black uppercase text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                  Today's Beat
+                </span>
+                <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded">
+                  {trip.beatCode}
+                </span>
+              </div>
               <h2 className="text-base font-black text-slate-900 mt-1 leading-tight">
                 {trip.name}
               </h2>
@@ -183,14 +212,85 @@ export default function TripDukansPage() {
               </p>
             </div>
 
-            <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200 text-center min-w-[75px]">
+            <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200 text-center min-w-[85px]">
               <span className="text-[10px] text-slate-400 font-bold block uppercase">
-                Progress
+                Beat Progress
               </span>
               <span className="text-sm font-black text-emerald-700">
-                {bookedCount} / {dukans.length}
+                {bookedCount} / {totalCount}
+              </span>
+              <span className="text-[10px] font-bold text-slate-500 block">
+                {percentDone}% Done
               </span>
             </div>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="space-y-1">
+            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-500"
+                style={{ width: `${percentDone}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[10px] font-bold text-slate-500 pt-0.5">
+              <span>{bookedCount} Shops Ordered Today</span>
+              <span className="text-amber-700">{pendingCount} Shops Remaining</span>
+            </div>
+          </div>
+
+          {/* Daily Metrics Summary */}
+          <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-100 text-center">
+            <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
+              <span className="text-[10px] font-bold text-slate-500 block uppercase">Total Shops</span>
+              <span className="text-sm font-black text-slate-900">{totalCount}</span>
+            </div>
+            <div className="bg-amber-50/80 p-2 rounded-xl border border-amber-200/80">
+              <span className="text-[10px] font-black text-amber-700 block uppercase">⏳ Pending</span>
+              <span className="text-sm font-black text-amber-800">{pendingCount}</span>
+            </div>
+            <div className="bg-emerald-50/80 p-2 rounded-xl border border-emerald-200/80">
+              <span className="text-[10px] font-black text-emerald-700 block uppercase">✅ Booked</span>
+              <span className="text-sm font-black text-emerald-800">
+                Rs. {totalSalesToday > 0 ? totalSalesToday.toLocaleString('en-IN') : '0'}
+              </span>
+            </div>
+          </div>
+
+          {/* Quick Filter Switcher */}
+          <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100/90 rounded-2xl">
+            <button
+              onClick={() => setStatusFilter('ALL')}
+              className={`py-2 text-xs font-black rounded-xl transition-all ${
+                statusFilter === 'ALL'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              All ({totalCount})
+            </button>
+            <button
+              onClick={() => setStatusFilter('PENDING')}
+              className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1 ${
+                statusFilter === 'PENDING'
+                  ? 'bg-amber-500 text-white shadow-xs'
+                  : 'text-amber-800 hover:bg-amber-100/50'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Pending ({pendingCount})</span>
+            </button>
+            <button
+              onClick={() => setStatusFilter('BOOKED')}
+              className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1 ${
+                statusFilter === 'BOOKED'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-emerald-800 hover:bg-emerald-100/50'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Booked ({bookedCount})</span>
+            </button>
           </div>
 
           {/* Salesman Action: Make New Call (Add Dukan) */}
@@ -239,19 +339,27 @@ export default function TripDukansPage() {
             </div>
           ) : (
             filteredDukans.map((dukan, idx) => {
-              const isBooked = dukan.visitStatus === 'ORDER_BOOKED';
+              const isBooked = dukan.isBookedToday;
 
               return (
                 <div
                   key={dukan.id}
-                  className={`bg-white rounded-3xl p-4 border transition-all shadow-sm flex flex-col justify-between gap-3 ${
-                    isBooked ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200'
+                  className={`bg-white rounded-3xl p-4 border transition-all shadow-xs flex flex-col justify-between gap-3 ${
+                    isBooked
+                      ? 'border-emerald-300 bg-gradient-to-br from-white via-emerald-50/20 to-white ring-1 ring-emerald-500/10'
+                      : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
                   <div>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-start gap-2.5">
-                        <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-xs font-black text-slate-700 flex-shrink-0 mt-0.5">
+                        <div
+                          className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black flex-shrink-0 mt-0.5 ${
+                            isBooked
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}
+                        >
                           #{idx + 1}
                         </div>
 
@@ -262,17 +370,36 @@ export default function TripDukansPage() {
                           <p className="text-xs text-slate-600 mt-0.5">
                             Proprietor: <strong>{dukan.ownerName}</strong>
                           </p>
+
+                          {/* Today's Booked Bill Details Tag */}
+                          {isBooked && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300">
+                                {dukan.lastOrderNumber || 'Bill Booked'}
+                              </span>
+                              {dukan.lastOrderAmount ? (
+                                <span className="text-[11px] font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md">
+                                  Rs. {dukan.lastOrderAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                </span>
+                              ) : null}
+                              {dukan.lastOrderTime ? (
+                                <span className="text-[10px] text-slate-500">
+                                  at {dukan.lastOrderTime}
+                                </span>
+                              ) : null}
+                            </div>
+                          )}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         {isBooked ? (
-                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3" /> Booked
+                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-emerald-300 shadow-2xs">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Booked Today
                           </span>
                         ) : (
-                          <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <Clock className="w-3 h-3" /> Pending
+                          <span className="bg-amber-100 text-amber-900 text-[10px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-amber-300 shadow-2xs animate-pulse">
+                            <Clock className="w-3 h-3 text-amber-600" /> Pending Today
                           </span>
                         )}
 
@@ -311,24 +438,56 @@ export default function TripDukansPage() {
                     </div>
                   </div>
 
-                  {/* Action button to order */}
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-slate-400">
-                      {isBooked ? 'Order already placed' : 'Ready for order'}
-                    </span>
+                  {/* Action button to order or view bill */}
+                  <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                    {isBooked ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const allOrders = getStoredOrders();
+                            const target =
+                              dukan.todayOrder ||
+                              allOrders.find(
+                                (o) => o.id === dukan.lastOrderId || o.dukanId === dukan.id
+                              );
+                            if (target) {
+                              setSelectedSlipOrder(target);
+                              setShowSlipModal(true);
+                            }
+                          }}
+                          className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-black flex items-center gap-1.5 shadow-xs transition-colors"
+                          title="View today's booked bill slip"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>👁️ View Bill</span>
+                        </button>
 
-                    <Link
-                      href={`/order/${dukan.id}?tripId=${trip.id}`}
-                      className={`py-2 px-4 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-xs ${
-                        isBooked
-                          ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/90'
-                          : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white shadow-md shadow-emerald-700/20 active:scale-[0.98]'
-                      }`}
-                    >
-                      <ShoppingBag className="w-3.5 h-3.5" />
-                      <span>{isBooked ? 'Add More Items' : 'Take Order'}</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
+                        <Link
+                          href={`/order/${dukan.id}?tripId=${trip.id}`}
+                          className="py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-black flex items-center gap-1 transition-colors"
+                        >
+                          <ShoppingBag className="w-3.5 h-3.5" />
+                          <span>+ Add More</span>
+                        </Link>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-[11px] font-bold text-amber-700 flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-amber-600" />
+                          <span>Pending today</span>
+                        </span>
+
+                        <Link
+                          href={`/order/${dukan.id}?tripId=${trip.id}`}
+                          className="py-2 px-4 rounded-xl text-xs font-black flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white shadow-md shadow-emerald-700/20 active:scale-[0.98] transition-all"
+                        >
+                          <ShoppingBag className="w-3.5 h-3.5" />
+                          <span>Take Order</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </>
+                    )}
                   </div>
                 </div>
               );
@@ -495,6 +654,13 @@ export default function TripDukansPage() {
           </div>
         </div>
       )}
+
+      {/* In-App Order Slip Modal (View Bill Without Download) */}
+      <OrderSlipModal
+        order={selectedSlipOrder}
+        isOpen={showSlipModal}
+        onClose={() => setShowSlipModal(false)}
+      />
 
       <MobileBottomNav currentUser={currentUser} />
     </div>

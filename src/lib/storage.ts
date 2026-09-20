@@ -128,10 +128,66 @@ export const getDukanById = (dukanId: string): Dukan | undefined => {
   return all.find((d) => d.id === dukanId);
 };
 
+export const isDateToday = (dateStr?: string): boolean => {
+  if (!dateStr) return false;
+  try {
+    const d = new Date(dateStr);
+    const now = new Date();
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    );
+  } catch (e) {
+    return false;
+  }
+};
+
 export const updateDukanVisitStatus = (dukanId: string, status: Dukan['visitStatus']): void => {
   const all = getStoredDukans();
   const updated = all.map((d) => (d.id === dukanId ? { ...d, visitStatus: status } : d));
   saveDukans(updated);
+};
+
+export const updateDukanOrderRecord = (
+  dukanId: string,
+  details: Partial<Dukan>
+): void => {
+  const all = getStoredDukans();
+  const updated = all.map((d) => (d.id === dukanId ? { ...d, ...details } : d));
+  saveDukans(updated);
+};
+
+export interface DukanDailyStatus extends Dukan {
+  isBookedToday: boolean;
+  todayOrder?: Order;
+}
+
+export const getDukansWithDailyStatus = (tripId?: string): DukanDailyStatus[] => {
+  const allDukans = getStoredDukans();
+  const allOrders = getStoredOrders();
+
+  const filtered = tripId ? allDukans.filter((d) => d.tripId === tripId) : allDukans;
+
+  return filtered.map((dukan) => {
+    // Find the latest order placed TODAY for this dukan
+    const todayOrder = allOrders.find(
+      (o) => o.dukanId === dukan.id && isDateToday(o.createdAt)
+    );
+
+    const isBookedToday = Boolean(todayOrder) || (dukan.visitStatus === 'ORDER_BOOKED' && isDateToday(dukan.lastOrderDate));
+
+    return {
+      ...dukan,
+      visitStatus: isBookedToday ? ('ORDER_BOOKED' as const) : ('PENDING' as const),
+      isBookedToday,
+      todayOrder: todayOrder || undefined,
+      lastOrderAmount: todayOrder ? todayOrder.totalMrpValue : dukan.lastOrderAmount,
+      lastOrderNumber: todayOrder ? todayOrder.orderNumber : dukan.lastOrderNumber,
+      lastOrderId: todayOrder ? todayOrder.id : dukan.lastOrderId,
+      lastOrderDate: todayOrder ? todayOrder.createdAt : dukan.lastOrderDate,
+    };
+  });
 };
 
 // Salesman Feature: Add New Dukan / Make Call
@@ -299,8 +355,15 @@ export const createSalesmanOrder = (params: {
   orders.unshift(newOrder);
   saveOrders(orders);
 
-  // Mark Dukan as ORDER_BOOKED
-  updateDukanVisitStatus(params.dukan.id, 'ORDER_BOOKED');
+  // Mark Dukan as ORDER_BOOKED with today's order details
+  updateDukanOrderRecord(params.dukan.id, {
+    visitStatus: 'ORDER_BOOKED',
+    lastOrderAmount: totalMrpValue,
+    lastOrderNumber: orderNumber,
+    lastOrderId: newOrder.id,
+    lastOrderDate: newOrder.createdAt,
+    lastOrderTime: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+  });
 
   // Asynchronously sync to MySQL database / queue
   syncOrderToBackend(newOrder);

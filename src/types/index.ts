@@ -34,6 +34,10 @@ export interface Dukan {
   gstNumber?: string;
   visitStatus: VisitStatus;
   lastOrderAmount?: number;
+  lastOrderId?: string;
+  lastOrderNumber?: string;
+  lastOrderTime?: string;
+  lastOrderDate?: string;
 }
 
 export interface Company {
