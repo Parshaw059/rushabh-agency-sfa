@@ -11,6 +11,7 @@ import {
   getDukansWithDailyStatus,
   DukanDailyStatus,
   getStoredOrders,
+  syncOrdersWithBackend,
   addDukan,
   deleteDukan,
 } from '@/lib/storage';
@@ -85,7 +86,32 @@ export default function TripDukansPage() {
 
     if (foundTrip) {
       setDukans(getDukansWithDailyStatus(foundTrip.id));
+      // Cloud sync immediately on load
+      syncOrdersWithBackend().then(() => {
+        setDukans(getDukansWithDailyStatus(foundTrip.id));
+      });
     }
+
+    // Auto-sync with cloud every 5 seconds so phone orders immediately show up on laptop
+    const interval = setInterval(() => {
+      syncOrdersWithBackend().then(() => {
+        if (foundTrip) setDukans(getDukansWithDailyStatus(foundTrip.id));
+      });
+    }, 5000);
+
+    const handleFocus = () => {
+      syncOrdersWithBackend().then(() => {
+        if (foundTrip) setDukans(getDukansWithDailyStatus(foundTrip.id));
+      });
+    };
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('visibilitychange', handleFocus);
+    };
   }, [tripId, router]);
 
   if (!currentUser || !trip) return null;

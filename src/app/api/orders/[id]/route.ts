@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateOrderItemsInDb } from '@/lib/mysql';
+import { updateCloudOrderItems } from '@/lib/cloudDb';
 import { OrderItemRecord } from '@/types';
 
-// PUT /api/orders/[id] - Owner adjust order quantities in MySQL
+export const dynamic = 'force-dynamic';
+
+// PUT /api/orders/[id] - Update order quantities and notes in Cloud Store
 export async function PUT(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -11,6 +13,7 @@ export async function PUT(
     const orderId = params.id;
     const body = await req.json();
     const updatedItems: OrderItemRecord[] = body.items;
+    const notes: string | undefined = body.notes;
 
     if (!orderId || !updatedItems || !Array.isArray(updatedItems)) {
       return NextResponse.json(
@@ -19,14 +22,14 @@ export async function PUT(
       );
     }
 
-    const updated = await updateOrderItemsInDb(orderId, updatedItems);
+    const updated = await updateCloudOrderItems(orderId, updatedItems, notes);
 
     return NextResponse.json({
       success: true,
-      updatedInDb: updated,
+      updated,
       message: updated
-        ? 'Order quantities updated in MySQL database'
-        : 'Updated locally (MySQL offline or unconfigured)',
+        ? 'Order updated successfully in Cloud Store'
+        : 'Could not update order in cloud store',
     });
   } catch (error: any) {
     return NextResponse.json(

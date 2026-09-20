@@ -64,13 +64,27 @@ export default function OwnerOrdersPage() {
     setDukans(getDukansWithDailyStatus());
     setAllTrips(getStoredTrips());
 
-    // Sync latest orders from MySQL
-    syncOrdersWithBackend().then((fresh) => {
-      if (fresh && fresh.length > 0) {
-        setOrders(fresh);
-        setDukans(getDukansWithDailyStatus());
-      }
-    });
+    // Sync latest orders from Cloud
+    const loadFresh = () => {
+      syncOrdersWithBackend().then((fresh) => {
+        if (fresh && fresh.length > 0) {
+          setOrders(fresh);
+          setDukans(getDukansWithDailyStatus());
+        }
+      });
+    };
+
+    loadFresh();
+
+    const interval = setInterval(loadFresh, 5000);
+    window.addEventListener('focus', loadFresh);
+    window.addEventListener('visibilitychange', loadFresh);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', loadFresh);
+      window.removeEventListener('visibilitychange', loadFresh);
+    };
   }, [router]);
 
   // Open Edit Order Quantities Modal

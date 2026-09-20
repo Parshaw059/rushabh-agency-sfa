@@ -1,37 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getOrdersFromDb, insertOrderToDb } from '@/lib/mysql';
+import { getCloudOrders, saveCloudOrder } from '@/lib/cloudDb';
 import { Order } from '@/types';
 
-// GET /api/orders - Fetch all orders from MySQL database
+// Force dynamic execution for real-time cloud data
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+// GET /api/orders - Fetch all orders from Cloud Store
 export async function GET() {
   try {
-    const orders = await getOrdersFromDb();
-    if (orders !== null) {
-      return NextResponse.json({
-        success: true,
-        source: 'mysql',
-        orders,
-      });
-    }
-
+    const { orders, source } = await getCloudOrders();
     return NextResponse.json({
       success: true,
-      source: 'local_fallback',
-      orders: [],
-      message: 'MySQL is offline or not configured; serving fallback store',
+      source,
+      orders,
+      timestamp: new Date().toISOString(),
     });
   } catch (error: any) {
     return NextResponse.json(
       {
         success: false,
-        error: error?.message || 'Failed to fetch orders from database',
+        error: error?.message || 'Failed to fetch orders from cloud store',
       },
       { status: 500 }
     );
   }
 }
 
-// POST /api/orders - Save new field order into MySQL database
+// POST /api/orders - Save new field order into Cloud Store
 export async function POST(req: NextRequest) {
   try {
     const orderData: Order = await req.json();
@@ -43,15 +39,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const savedToDb = await insertOrderToDb(orderData);
+    const saved = await saveCloudOrder(orderData);
 
     return NextResponse.json({
       success: true,
-      savedToDb,
+      saved,
       order: orderData,
-      message: savedToDb
-        ? 'Order recorded successfully in MySQL database'
-        : 'Order queued; MySQL database is offline or not configured',
+      message: 'Order recorded successfully in Cloud Store',
     });
   } catch (error: any) {
     return NextResponse.json(

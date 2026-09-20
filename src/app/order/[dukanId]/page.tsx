@@ -11,6 +11,7 @@ import {
   createSalesmanOrder,
   getTodayOrderByDukan,
   updateSalesmanOrder,
+  syncOrdersWithBackend,
 } from '@/lib/storage';
 import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp } from '@/utils/generatePdfReceipt';
 import { MobileHeader } from '@/components/MobileHeader';
@@ -82,35 +83,40 @@ export default function SalesmanOrderTakingPage() {
     setProducts(loadedProducts);
 
     // Check if a bill was ALREADY booked today for this retailer
-    const priorOrder = getTodayOrderByDukan(dukanId);
-    if (priorOrder) {
-      setExistingTodayOrder(priorOrder);
+    const checkOrder = () => {
+      const priorOrder = getTodayOrderByDukan(dukanId);
+      if (priorOrder) {
+        setExistingTodayOrder(priorOrder);
 
-      // Pre-load previous bill items into cart so additions happen on the same bill
-      const preloadedCart: CartItem[] = priorOrder.items.map((item) => {
-        const prod = loadedProducts.find((p) => p.id === item.productId) || {
-          id: item.productId,
-          companyId: 'dabur',
-          companyName: item.companyName,
-          category: 'FMCG',
-          name: item.productName,
-          packSize: item.packSize,
-          wdmsCode: item.wdmsCode,
-          unitsPerBox: item.unitsPerBox,
-          mrp: item.mrp,
-        };
-        return {
-          product: prod,
-          boxQty: item.boxQty,
-          looseQty: item.looseQty,
-          totalUnits: item.totalUnits,
-          lineMrpTotal: item.lineMrpTotal,
-        };
-      });
+        // Pre-load previous bill items into cart so additions happen on the same bill
+        const preloadedCart: CartItem[] = priorOrder.items.map((item) => {
+          const prod = loadedProducts.find((p) => p.id === item.productId) || {
+            id: item.productId,
+            companyId: 'dabur',
+            companyName: item.companyName,
+            category: 'FMCG',
+            name: item.productName,
+            packSize: item.packSize,
+            wdmsCode: item.wdmsCode,
+            unitsPerBox: item.unitsPerBox,
+            mrp: item.mrp,
+          };
+          return {
+            product: prod,
+            boxQty: item.boxQty,
+            looseQty: item.looseQty,
+            totalUnits: item.totalUnits,
+            lineMrpTotal: item.lineMrpTotal,
+          };
+        });
 
-      setCartItems(preloadedCart);
-      if (priorOrder.notes) setNotes(priorOrder.notes);
-    }
+        setCartItems(preloadedCart);
+        if (priorOrder.notes) setNotes(priorOrder.notes);
+      }
+    };
+
+    checkOrder();
+    syncOrdersWithBackend().then(() => checkOrder());
   }, [dukanId, router]);
 
   // Handle Box & Loose quantity update

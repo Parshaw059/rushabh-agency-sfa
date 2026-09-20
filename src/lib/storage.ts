@@ -529,7 +529,7 @@ export const flushOfflineOrderQueue = async (): Promise<void> => {
   }
 };
 
-// Fetch latest orders from MySQL and merge with local storage
+// Fetch latest orders from Cloud and merge with local storage
 export const syncOrdersWithBackend = async (): Promise<Order[]> => {
   if (!isBrowser) return getStoredOrders();
 
@@ -539,25 +539,41 @@ export const syncOrdersWithBackend = async (): Promise<Order[]> => {
   if (!navigator.onLine) return getStoredOrders();
 
   try {
-    const res = await fetch('/api/orders');
+    const res = await fetch('/api/orders', { cache: 'no-store' });
     if (!res.ok) return getStoredOrders();
     const data = await res.json();
-    if (data.success && data.source === 'mysql' && Array.isArray(data.orders) && data.orders.length > 0) {
-      // Merge unique orders
+    if (data.success && Array.isArray(data.orders)) {
+      // Merge unique orders: cloud orders take precedence or merge
       const local = getStoredOrders();
       const map = new Map<string, Order>();
+      // First put local
+      local.forEach((o: Order) => map.set(o.id, o));
+      // Then overlay cloud orders
       data.orders.forEach((o: Order) => map.set(o.id, o));
-      local.forEach((o: Order) => {
-        if (!map.has(o.id)) map.set(o.id, o);
-      });
+      
       const merged = Array.from(map.values()).sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
       saveOrders(merged);
+
+      // Also update dukan visit statuses for today's orders
+      merged.forEach((ord) => {
+        if (isDateToday(ord.createdAt)) {
+          updateDukanOrderRecord(ord.dukanId, {
+            visitStatus: 'ORDER_BOOKED',
+            lastOrderAmount: ord.totalMrpValue,
+            lastOrderNumber: ord.orderNumber,
+            lastOrderId: ord.id,
+            lastOrderDate: ord.createdAt,
+            lastOrderTime: new Date(ord.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+          });
+        }
+      });
+
       return merged;
     }
   } catch (err) {
-    console.warn('[MySQL] Error syncing orders:', err);
+    console.warn('[CloudSync] Error syncing orders:', err);
   }
 
   return getStoredOrders();

@@ -4,7 +4,13 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Trip, User } from '@/types';
-import { getCurrentUser, getStoredTrips, getDukansWithDailyStatus, DukanDailyStatus } from '@/lib/storage';
+import {
+  getCurrentUser,
+  getStoredTrips,
+  getDukansWithDailyStatus,
+  DukanDailyStatus,
+  syncOrdersWithBackend,
+} from '@/lib/storage';
 import { MobileHeader } from '@/components/MobileHeader';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import {
@@ -33,6 +39,20 @@ export default function TripsPage() {
     setCurrentUser(user);
     setTrips(getStoredTrips());
     setDukans(getDukansWithDailyStatus());
+
+    // Sync cloud orders immediately
+    syncOrdersWithBackend().then(() => {
+      setDukans(getDukansWithDailyStatus());
+    });
+
+    // Auto poll every 6s
+    const interval = setInterval(() => {
+      syncOrdersWithBackend().then(() => {
+        setDukans(getDukansWithDailyStatus());
+      });
+    }, 6000);
+
+    return () => clearInterval(interval);
   }, [router]);
 
   const totalDukanCount = dukans.length;
