@@ -40,19 +40,32 @@ export default function TripsPage() {
     setTrips(getStoredTrips());
     setDukans(getDukansWithDailyStatus());
 
-    // Sync cloud orders immediately
-    syncOrdersWithBackend().then(() => {
-      setDukans(getDukansWithDailyStatus());
-    });
-
-    // Auto poll every 6s
-    const interval = setInterval(() => {
+    const refreshData = () => {
       syncOrdersWithBackend().then(() => {
         setDukans(getDukansWithDailyStatus());
       });
-    }, 6000);
+    };
 
-    return () => clearInterval(interval);
+    // Sync cloud orders immediately
+    refreshData();
+
+    // Auto poll every 4s
+    const interval = setInterval(refreshData, 4000);
+
+    const handleSyncEvent = () => {
+      setDukans(getDukansWithDailyStatus());
+    };
+
+    window.addEventListener('focus', refreshData);
+    window.addEventListener('visibilitychange', refreshData);
+    window.addEventListener('rushabh-orders-synced', handleSyncEvent);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', refreshData);
+      window.removeEventListener('visibilitychange', refreshData);
+      window.removeEventListener('rushabh-orders-synced', handleSyncEvent);
+    };
   }, [router]);
 
   const totalDukanCount = dukans.length;

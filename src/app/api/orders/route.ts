@@ -9,11 +9,12 @@ export const revalidate = 0;
 // GET /api/orders - Fetch all orders from Cloud Store
 export async function GET() {
   try {
-    const { orders, source } = await getCloudOrders();
+    const { orders, deletedIds, source } = await getCloudOrders();
     return NextResponse.json({
       success: true,
       source,
       orders,
+      deletedIds: deletedIds || [],
       timestamp: new Date().toISOString(),
     });
   } catch (error: any) {

@@ -558,7 +558,7 @@ export const flushOfflineOrderQueue = async (): Promise<void> => {
   }
 };
 
-// Fetch latest orders from Cloud and merge with local storage
+// Fetch latest orders from Cloud and perform bi-directional two-way sync
 export const syncOrdersWithBackend = async (): Promise<Order[]> => {
   if (!isBrowser) return getStoredOrders();
 
@@ -572,32 +572,83 @@ export const syncOrdersWithBackend = async (): Promise<Order[]> => {
     if (!res.ok) return getStoredOrders();
     const data = await res.json();
     if (data.success && Array.isArray(data.orders)) {
-      // Merge unique orders: cloud orders take precedence or merge
-      const local = getStoredOrders();
+      const cloudOrders: Order[] = data.orders;
+      const deletedIds = new Set<string>(Array.isArray(data.deletedIds) ? data.deletedIds : []);
+      const localOrders = getStoredOrders();
+
+      // 1. Remove any local orders that were deleted in the cloud
+      let cleanLocal = localOrders.filter(
+        (o) => !deletedIds.has(o.id) && !deletedIds.has(o.orderNumber)
+      );
+
+      // 2. BI-DIRECTIONAL UPLOAD:
+      // If this device (e.g. phone) has orders stored locally that are NOT yet in the cloud database
+      // and haven't been deleted, upload them to the cloud right now!
+      const cloudOrderIds = new Set(cloudOrders.map((o: Order) => o.id));
+      const cloudOrderNumbers = new Set(cloudOrders.map((o: Order) => o.orderNumber));
+
+      for (const localOrd of cleanLocal) {
+        if (!cloudOrderIds.has(localOrd.id) && !cloudOrderNumbers.has(localOrd.orderNumber)) {
+          try {
+            await fetch('/api/orders', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(localOrd),
+            });
+            cloudOrders.unshift(localOrd);
+          } catch (e) {
+            console.warn('[CloudSync] Failed to upload local order to cloud:', e);
+          }
+        }
+      }
+
+      // 3. Merge unique orders
       const map = new Map<string, Order>();
-      // First put local
-      local.forEach((o: Order) => map.set(o.id, o));
-      // Then overlay cloud orders
-      data.orders.forEach((o: Order) => map.set(o.id, o));
-      
+      cleanLocal.forEach((o: Order) => map.set(o.id, o));
+      cloudOrders.forEach((o: Order) => map.set(o.id, o));
+
       const merged = Array.from(map.values()).sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
       saveOrders(merged);
 
-      // Also update dukan visit statuses for today's orders
-      merged.forEach((ord) => {
-        if (isDateToday(ord.createdAt)) {
-          updateDukanOrderRecord(ord.dukanId, {
-            visitStatus: 'ORDER_BOOKED',
-            lastOrderAmount: ord.totalMrpValue,
-            lastOrderNumber: ord.orderNumber,
-            lastOrderId: ord.id,
-            lastOrderDate: ord.createdAt,
-            lastOrderTime: new Date(ord.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-          });
+      // 4. Update all dukan visit statuses deterministically
+      const allDukans = getStoredDukans();
+      const updatedDukans = allDukans.map((dukan) => {
+        const todayOrder = merged.find(
+          (o) => o.dukanId === dukan.id && isDateToday(o.createdAt)
+        );
+        if (todayOrder) {
+          return {
+            ...dukan,
+            visitStatus: 'ORDER_BOOKED' as const,
+            lastOrderAmount: todayOrder.totalMrpValue,
+            lastOrderNumber: todayOrder.orderNumber,
+            lastOrderId: todayOrder.id,
+            lastOrderDate: todayOrder.createdAt,
+            lastOrderTime: new Date(todayOrder.createdAt).toLocaleTimeString('en-IN', {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+          };
+        } else {
+          return {
+            ...dukan,
+            visitStatus: 'PENDING' as const,
+            lastOrderAmount: undefined,
+            lastOrderNumber: undefined,
+            lastOrderId: undefined,
+            lastOrderDate: undefined,
+            lastOrderTime: undefined,
+          };
         }
       });
+      saveDukans(updatedDukans);
+
+      // 5. Notify all active listeners across tabs/components
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('rushabh-orders-synced', { detail: merged }));
+      }
 
       return merged;
     }

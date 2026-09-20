@@ -3,9 +3,9 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, User, LogOut, PackageCheck, Shield, Smartphone } from 'lucide-react';
+import { ArrowLeft, User, LogOut, PackageCheck, Shield, Smartphone, RefreshCw } from 'lucide-react';
 import { User as UserType } from '@/types';
-import { logoutUser } from '@/lib/storage';
+import { logoutUser, syncOrdersWithBackend } from '@/lib/storage';
 import { InstallAppModal } from './InstallAppModal';
 
 interface MobileHeaderProps {
@@ -25,6 +25,17 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
 }) => {
   const router = useRouter();
   const [showInstallModal, setShowInstallModal] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      await syncOrdersWithBackend();
+    } catch (e) {
+    } finally {
+      setTimeout(() => setIsSyncing(false), 600);
+    }
+  };
 
   const handleBack = () => {
     if (backHref) {
@@ -85,6 +96,17 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
 
           {/* User Info / Actions */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Cloud Sync Button */}
+            <button
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-emerald-700 border border-slate-200/90 transition-all flex items-center gap-1 text-[10px] font-bold active:scale-95"
+              title="Sync Orders with Cloud (Phone ⇄ Laptop)"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync'}</span>
+            </button>
+
             <button
               onClick={() => setShowInstallModal(true)}
               className="p-1.5 rounded-xl bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/80 transition-colors flex items-center gap-1 text-[10px] font-black"

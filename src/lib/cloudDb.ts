@@ -11,8 +11,8 @@ const getStoreKey = (): string => {
 const GITHUB_TOKEN = getStoreKey();
 const GIST_ID = process.env.ORDERS_GIST_ID || 'e7b80bbaf9b1c7c12d812cf0d2976f6c';
 
-// Helper: Fetch orders from GitHub Gist Cloud Store
-const getOrdersFromGist = async (): Promise<Order[]> => {
+// Helper: Fetch orders and deleted IDs from GitHub Gist Cloud Store
+const getOrdersFromGist = async (): Promise<{ orders: Order[]; deletedIds: string[] }> => {
   try {
     const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
       headers: {
@@ -25,24 +25,51 @@ const getOrdersFromGist = async (): Promise<Order[]> => {
 
     if (!res.ok) {
       console.warn('[CloudDb] Gist fetch HTTP error:', res.status);
-      return [];
+      return { orders: [], deletedIds: [] };
     }
 
     const data = await res.json();
-    const content = data.files?.['orders.json']?.content;
-    if (!content) return [];
+    const ordersContent = data.files?.['orders.json']?.content;
+    const deletedContent = data.files?.['deleted_ids.json']?.content;
 
-    const orders: Order[] = JSON.parse(content);
-    return Array.isArray(orders) ? orders : [];
+    let orders: Order[] = [];
+    if (ordersContent) {
+      try {
+        const parsed = JSON.parse(ordersContent);
+        if (Array.isArray(parsed)) orders = parsed;
+      } catch (e) {}
+    }
+
+    let deletedIds: string[] = [];
+    if (deletedContent) {
+      try {
+        const parsed = JSON.parse(deletedContent);
+        if (Array.isArray(parsed)) deletedIds = parsed;
+      } catch (e) {}
+    }
+
+    return { orders, deletedIds };
   } catch (err) {
     console.warn('[CloudDb] Gist read exception:', err);
-    return [];
+    return { orders: [], deletedIds: [] };
   }
 };
 
-// Helper: Save all orders to GitHub Gist Cloud Store
-const saveOrdersToGist = async (orders: Order[]): Promise<boolean> => {
+// Helper: Save all orders and deleted IDs to GitHub Gist Cloud Store
+const saveOrdersToGist = async (orders: Order[], deletedIds?: string[]): Promise<boolean> => {
   try {
+    const filesPayload: any = {
+      'orders.json': {
+        content: JSON.stringify(orders, null, 2),
+      },
+    };
+
+    if (deletedIds !== undefined) {
+      filesPayload['deleted_ids.json'] = {
+        content: JSON.stringify(deletedIds, null, 2),
+      };
+    }
+
     const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
       method: 'PATCH',
       headers: {
@@ -52,11 +79,7 @@ const saveOrdersToGist = async (orders: Order[]): Promise<boolean> => {
         Accept: 'application/vnd.github.v3+json',
       },
       body: JSON.stringify({
-        files: {
-          'orders.json': {
-            content: JSON.stringify(orders, null, 2),
-          },
-        },
+        files: filesPayload,
       }),
     });
 
@@ -68,18 +91,18 @@ const saveOrdersToGist = async (orders: Order[]): Promise<boolean> => {
 };
 
 // Master Function: Get all orders across devices
-export const getCloudOrders = async (): Promise<{ orders: Order[]; source: string }> => {
+export const getCloudOrders = async (): Promise<{ orders: Order[]; deletedIds: string[]; source: string }> => {
   // 1. Try MySQL if configured
   try {
     const mysqlOrders = await getOrdersFromDb();
     if (mysqlOrders && mysqlOrders.length > 0) {
-      return { orders: mysqlOrders, source: 'mysql' };
+      return { orders: mysqlOrders, deletedIds: [], source: 'mysql' };
     }
   } catch (e) {}
 
   // 2. Read from GitHub Gist Cloud Store
-  const gistOrders = await getOrdersFromGist();
-  return { orders: gistOrders, source: 'cloud_gist' };
+  const { orders, deletedIds } = await getOrdersFromGist();
+  return { orders, deletedIds, source: 'cloud_gist' };
 };
 
 // Master Function: Insert or update an order in Cloud Store
@@ -91,7 +114,7 @@ export const saveCloudOrder = async (order: Order): Promise<boolean> => {
 
   // Always sync to Gist Cloud Store so all devices (phones & laptops) see it immediately
   try {
-    const currentOrders = await getOrdersFromGist();
+    const { orders: currentOrders, deletedIds } = await getOrdersFromGist();
     const existingIdx = currentOrders.findIndex(
       (o) => o.id === order.id || o.orderNumber === order.orderNumber
     );
@@ -102,7 +125,12 @@ export const saveCloudOrder = async (order: Order): Promise<boolean> => {
       currentOrders.unshift(order);
     }
 
-    const savedGist = await saveOrdersToGist(currentOrders);
+    // Remove from deletedIds if present
+    const updatedDeletedIds = deletedIds.filter(
+      (id) => id !== order.id && id !== order.orderNumber
+    );
+
+    const savedGist = await saveOrdersToGist(currentOrders, updatedDeletedIds);
     return savedMysql || savedGist;
   } catch (e) {
     return savedMysql;
@@ -120,7 +148,7 @@ export const updateCloudOrderItems = async (
   } catch (e) {}
 
   try {
-    const currentOrders = await getOrdersFromGist();
+    const { orders: currentOrders } = await getOrdersFromGist();
     const orderIdx = currentOrders.findIndex((o) => o.id === orderId);
     if (orderIdx >= 0) {
       const ord = currentOrders[orderIdx];
@@ -155,9 +183,10 @@ export const deleteCloudOrder = async (orderId: string): Promise<boolean> => {
   } catch (e) {}
 
   try {
-    const currentOrders = await getOrdersFromGist();
+    const { orders: currentOrders, deletedIds } = await getOrdersFromGist();
     const filtered = currentOrders.filter((o) => o.id !== orderId && o.orderNumber !== orderId);
-    const savedGist = await saveOrdersToGist(filtered);
+    const updatedDeletedIds = Array.from(new Set([...deletedIds, orderId]));
+    const savedGist = await saveOrdersToGist(filtered, updatedDeletedIds);
     return deletedMysql || savedGist;
   } catch (e) {
     return deletedMysql;
