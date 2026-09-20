@@ -10,7 +10,7 @@ import {
   updateOrderItems,
   generateWdmsSalesmanCsv,
 } from '@/lib/storage';
-import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink } from '@/utils/generatePdfReceipt';
+import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp } from '@/utils/generatePdfReceipt';
 import { MobileHeader } from '@/components/MobileHeader';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { OrderSlipModal } from '@/components/OrderSlipModal';
@@ -289,12 +289,12 @@ export default function OwnerOrdersPage() {
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => window.open(generateWhatsAppShareLink(order), '_blank')}
+                      onClick={() => shareOrderPdfViaWhatsApp(order)}
                       className="flex-1 py-1.5 px-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white text-xs font-bold flex items-center justify-center gap-1 shadow-xs"
-                      title="Send WhatsApp Order"
+                      title="Share official Order PDF directly via WhatsApp"
                     >
                       <Share2 className="w-3.5 h-3.5" />
-                      <span>WhatsApp Share</span>
+                      <span>WhatsApp PDF</span>
                     </button>
 
                     {/* Owner Edit Quantities Button */}

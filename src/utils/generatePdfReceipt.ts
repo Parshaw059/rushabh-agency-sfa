@@ -315,3 +315,60 @@ export const generateWhatsAppShareLink = (order: Order, agencyPhone: string = '9
 
   return `https://wa.me/${agencyPhone}?text=${encodeURIComponent(text)}`;
 };
+
+/**
+ * Shares the actual official PDF file directly to WhatsApp on mobile (Android/iOS)
+ * using the Web Share API with files.
+ * On desktop PC browsers, it downloads the PDF file to downloads and opens WhatsApp
+ * chat with the Owner (8128232377) so the PDF can be attached.
+ */
+export const shareOrderPdfViaWhatsApp = async (
+  order: Order,
+  agencyPhone: string = '918128232377'
+): Promise<void> => {
+  const cleanDukanName = order.dukanName.replace(/[^a-zA-Z0-9]/g, '_');
+  const fileName = `${order.orderNumber}_${cleanDukanName}.pdf`;
+
+  try {
+    const doc = buildOrderPdfDoc(order);
+    const pdfBlob = doc.output('blob');
+    const pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
+
+    // Native mobile file sharing (Android Chrome, iOS Safari, PWA)
+    if (
+      typeof navigator !== 'undefined' &&
+      typeof navigator.share === 'function' &&
+      navigator.canShare &&
+      navigator.canShare({ files: [pdfFile] })
+    ) {
+      await navigator.share({
+        title: `Order PDF Slip - ${order.orderNumber}`,
+        text: `📄 Rushabh Agency Order Slip: ${order.orderNumber} for ${order.dukanName} (${order.totalUnits} Pcs)`,
+        files: [pdfFile],
+      });
+      return;
+    }
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      // User cancelled share dialog
+      return;
+    }
+    console.warn('Native PDF file share not supported or failed, falling back:', err);
+  }
+
+  // Desktop / Browser Fallback:
+  // 1. Download the PDF file directly to the device
+  generateOrderPdf(order);
+
+  // 2. Open WhatsApp chat with pre-filled message
+  const fallbackMsg = `📄 *RUSHABH AGENCY - OFFICIAL ORDER PDF SLIP*\n` +
+    `*Order No:* ${order.orderNumber}\n` +
+    `🏬 *Dukan:* ${order.dukanName} (${order.tripName})\n` +
+    `👤 *Proprietor:* ${order.ownerName}\n` +
+    `📦 *Order Volume:* ${order.totalBoxes} Boxes + ${order.totalLoose} Loose = *${order.totalUnits} Pcs*\n` +
+    `💰 *Est. MRP Total:* Rs. ${order.totalMrpValue.toFixed(2)}\n\n` +
+    `📎 *Official PDF File:* "${fileName}" has been downloaded to your device.\n` +
+    `👉 Please tap the paperclip / attachment (+) icon to send the PDF here.`;
+
+  window.open(`https://wa.me/${agencyPhone}?text=${encodeURIComponent(fallbackMsg)}`, '_blank');
+};

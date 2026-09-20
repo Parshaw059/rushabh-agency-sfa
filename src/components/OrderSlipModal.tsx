@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Order } from '@/types';
-import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink } from '@/utils/generatePdfReceipt';
+import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp } from '@/utils/generatePdfReceipt';
 import { X, Eye, Download, Share2, Printer, CheckCircle2, Store, Calendar, User, Phone, MapPin } from 'lucide-react';
 
 interface OrderSlipModalProps {
@@ -213,12 +213,12 @@ export const OrderSlipModal: React.FC<OrderSlipModalProps> = ({ order, isOpen, o
           </button>
 
           <button
-            onClick={() => window.open(generateWhatsAppShareLink(order), '_blank')}
+            onClick={() => shareOrderPdfViaWhatsApp(order)}
             className="py-2.5 px-3 rounded-xl bg-green-500 hover:bg-green-600 text-white font-black text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs"
-            title="Share text order slip to Rushabh Agency on WhatsApp"
+            title="Share official Order PDF directly via WhatsApp"
           >
             <Share2 className="w-4 h-4" />
-            <span>WhatsApp</span>
+            <span>WhatsApp PDF</span>
           </button>
 
           <button

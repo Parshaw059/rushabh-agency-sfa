@@ -10,7 +10,7 @@ import {
   getStoredProducts,
   createSalesmanOrder,
 } from '@/lib/storage';
-import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink } from '@/utils/generatePdfReceipt';
+import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp } from '@/utils/generatePdfReceipt';
 import { MobileHeader } from '@/components/MobileHeader';
 import { OrderSlipModal } from '@/components/OrderSlipModal';
 import { TruckDispatchAnimation } from '@/components/TruckDispatchAnimation';
@@ -661,12 +661,12 @@ export default function SalesmanOrderTakingPage() {
                 </button>
 
                 <button
-                  onClick={() => window.open(generateWhatsAppShareLink(completedOrder), '_blank')}
+                  onClick={() => shareOrderPdfViaWhatsApp(completedOrder)}
                   className="py-2.5 px-2 rounded-xl bg-green-500 hover:bg-green-600 text-white font-black text-[11px] flex items-center justify-center gap-1 shadow-xs transition-colors"
-                  title="Share order summary to Rushabh Agency via WhatsApp"
+                  title="Share official Order PDF directly via WhatsApp"
                 >
                   <Share2 className="w-3.5 h-3.5" />
-                  <span>WhatsApp</span>
+                  <span>WhatsApp PDF</span>
                 </button>
               </div>
             </div>
