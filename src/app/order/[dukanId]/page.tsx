@@ -13,6 +13,7 @@ import {
 import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink } from '@/utils/generatePdfReceipt';
 import { MobileHeader } from '@/components/MobileHeader';
 import { OrderSlipModal } from '@/components/OrderSlipModal';
+import { TruckDispatchAnimation } from '@/components/TruckDispatchAnimation';
 import {
   Search,
   Plus,
@@ -52,10 +53,11 @@ export default function SalesmanOrderTakingPage() {
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Completed order for receipt popup
+  // Completed order for receipt popup & truck animation
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
   const [showSlipModal, setShowSlipModal] = useState(false);
+  const [showTruckAnimation, setShowTruckAnimation] = useState(false);
 
   useEffect(() => {
     const user = getCurrentUser();
@@ -65,32 +67,35 @@ export default function SalesmanOrderTakingPage() {
     }
     setCurrentUser(user);
 
-    const foundDukan = getDukanById(dukanId);
-    if (!foundDukan) {
+    const loadedDukan = getDukanById(dukanId);
+    if (!loadedDukan) {
       router.push('/trips');
       return;
     }
-    setDukan(foundDukan);
+    setDukan(loadedDukan);
     setProducts(getStoredProducts());
   }, [dukanId, router]);
 
-  // Add / Update item in cart (Box + Loose)
+  // Handle Box & Loose quantity update
   const handleUpdateItem = (product: Product, boxQty: number, looseQty: number) => {
-    const totalUnits = boxQty * product.unitsPerBox + looseQty;
+    const safeBox = Math.max(0, isNaN(boxQty) ? 0 : boxQty);
+    const safeLoose = Math.max(0, isNaN(looseQty) ? 0 : looseQty);
+    const totalUnits = safeBox * product.unitsPerBox + safeLoose;
+    const lineMrpTotal = totalUnits * product.mrp;
 
     setCartItems((prev) => {
-      const existingIdx = prev.findIndex((item) => item.product.id === product.id);
+      const existingIdx = prev.findIndex((i) => i.product.id === product.id);
 
-      if (totalUnits === 0) {
-        return prev.filter((item) => item.product.id !== product.id);
+      if (safeBox === 0 && safeLoose === 0) {
+        return prev.filter((i) => i.product.id !== product.id);
       }
 
       const updated: CartItem = {
         product,
-        boxQty,
-        looseQty,
+        boxQty: safeBox,
+        looseQty: safeLoose,
         totalUnits,
-        lineMrpTotal: totalUnits * product.mrp,
+        lineMrpTotal,
       };
 
       if (existingIdx >= 0) {
@@ -103,18 +108,10 @@ export default function SalesmanOrderTakingPage() {
     });
   };
 
-  // Submit order to database
+  // Submit order to database with truck dispatch animation
   const handleSubmitOrder = () => {
     if (!currentUser || !dukan || cartItems.length === 0) return;
     setIsSubmitting(true);
-
-    try {
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 },
-      });
-    } catch (e) {}
 
     const orderItemRecords = cartItems.map((c) => ({
       productId: c.product.id,
@@ -139,13 +136,12 @@ export default function SalesmanOrderTakingPage() {
       notes,
     });
 
-    setTimeout(() => {
-      setCompletedOrder(newOrder);
-      setCartItems([]);
-      setIsReviewOpen(false);
-      setIsSubmitting(false);
-      setIsReceiptOpen(true);
-    }, 500);
+    setCompletedOrder(newOrder);
+    setCartItems([]);
+    setIsReviewOpen(false);
+    setIsSubmitting(false);
+    // Launch delightful truck parcel loading & dispatch animation
+    setShowTruckAnimation(true);
   };
 
   // Active Company
@@ -597,6 +593,19 @@ export default function SalesmanOrderTakingPage() {
           </div>
         </div>
       )}
+
+      {/* 🚚 Truck Dispatch & Parcel Loading Animation */}
+      <TruckDispatchAnimation
+        isOpen={showTruckAnimation}
+        dukanName={completedOrder?.dukanName || dukan?.shopName || ''}
+        totalBoxes={completedOrder?.totalBoxes || 0}
+        totalLoose={completedOrder?.totalLoose || 0}
+        totalUnits={completedOrder?.totalUnits || 0}
+        onComplete={() => {
+          setShowTruckAnimation(false);
+          setIsReceiptOpen(true);
+        }}
+      />
 
       {/* Post-Order Receipt Modal */}
       {isReceiptOpen && completedOrder && (
