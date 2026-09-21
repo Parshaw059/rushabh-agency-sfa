@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, User, LogOut, PackageCheck, Shield, Smartphone, RefreshCw } from 'lucide-react';
 import { User as UserType } from '@/types';
-import { logoutUser, syncAllWithBackend } from '@/lib/storage';
+import { logoutUser, syncAllWithBackend, forcePushAllLocalDukansToCloud } from '@/lib/storage';
 import { InstallAppModal } from './InstallAppModal';
 
 interface MobileHeaderProps {
@@ -26,14 +26,29 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   const router = useRouter();
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncToast, setSyncToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
 
   const handleManualSync = async () => {
     setIsSyncing(true);
+    setSyncToast({ message: '🔄 Syncing Retailers & Orders with Cloud...', type: 'info' });
     try {
-      await syncAllWithBackend();
-    } catch (e) {
+      // Force-push all local custom retailers first to ensure 100% upload
+      await forcePushAllLocalDukansToCloud().catch(() => {});
+      const res = await syncAllWithBackend();
+      const dukansCount = res.dukans?.length || 0;
+      const ordersCount = res.orders?.length || 0;
+      setSyncToast({
+        message: `✅ Cloud Synced! ${dukansCount} Retailers & ${ordersCount} Orders Active`,
+        type: 'success',
+      });
+    } catch (e: any) {
+      setSyncToast({
+        message: `⚠️ Sync notice: Local data saved. ${e?.message || ''}`,
+        type: 'error',
+      });
     } finally {
-      setTimeout(() => setIsSyncing(false), 700);
+      setIsSyncing(false);
+      setTimeout(() => setSyncToast(null), 4000);
     }
   };
 
@@ -138,6 +153,27 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
           </div>
         </div>
       </header>
+
+      {/* Sync Feedback Toast Banner */}
+      {syncToast && (
+        <div
+          className={`sticky top-[78px] z-30 px-4 py-2 text-xs font-bold shadow-md flex items-center justify-between transition-all animate-in fade-in slide-in-from-top-2 ${
+            syncToast.type === 'success'
+              ? 'bg-emerald-600 text-white'
+              : syncToast.type === 'error'
+              ? 'bg-amber-600 text-white'
+              : 'bg-slate-800 text-white'
+          }`}
+        >
+          <span className="truncate">{syncToast.message}</span>
+          <button
+            onClick={() => setSyncToast(null)}
+            className="ml-2 text-white/80 hover:text-white text-xs px-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <InstallAppModal
         isOpen={showInstallModal}

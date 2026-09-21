@@ -308,8 +308,11 @@ export const saveCloudDukan = async (dukan: Dukan): Promise<boolean> => {
 
   try {
     const { dukans: currentDukans, deletedIds } = await getDukansFromGist();
+    const cleanShop = dukan.shopName.trim().toLowerCase().replace(/\s+/g, ' ');
     const existingIdx = currentDukans.findIndex(
-      (d) => d.id === dukan.id || (d.shopName.toLowerCase() === dukan.shopName.toLowerCase() && d.tripId === dukan.tripId)
+      (d) =>
+        d.id === dukan.id ||
+        (d.shopName.trim().toLowerCase().replace(/\s+/g, ' ') === cleanShop && d.tripId === dukan.tripId)
     );
 
     if (existingIdx >= 0) {
@@ -341,12 +344,17 @@ export const saveCloudDukansBatch = async (incomingDukans: Dukan[]): Promise<boo
   try {
     const { dukans: currentDukans, deletedIds } = await getDukansFromGist();
     const map = new Map<string, Dukan>();
-    currentDukans.forEach((d) => map.set(d.id, d));
 
-    for (const d of incomingDukans) {
-      // Don't restore deleted ones
-      if (!deletedIds.includes(d.id)) {
-        map.set(d.id, { ...(map.get(d.id) || {}), ...d });
+    for (const d of [...currentDukans, ...incomingDukans]) {
+      if (!d || !d.shopName || deletedIds.includes(d.id)) continue;
+      const cleanName = d.shopName.trim().toLowerCase().replace(/\s+/g, ' ');
+      const normKey = `${d.tripId || ''}::${cleanName}`;
+      const existing = map.get(normKey);
+      if (existing) {
+        const preferredId = d.id?.startsWith('duk-custom-') ? d.id : existing.id;
+        map.set(normKey, { ...existing, ...d, id: preferredId });
+      } else {
+        map.set(normKey, d);
       }
     }
 

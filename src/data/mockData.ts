@@ -101,7 +101,7 @@ export const INITIAL_TRIPS: Trip[] = [
     name: 'Dashrath-Ranoli Beat',
     beatCode: 'BEAT-DSR-09',
     area: 'Dashrath Village & Ranoli Station Area',
-    dukanCount: 4,
+    dukanCount: 18,
     salesmanId: 'user-salesman-hiren',
     salesmanName: 'Hiren Shah'
   }
@@ -377,42 +377,170 @@ export const INITIAL_DUKANS: Dukan[] = [
     visitStatus: 'PENDING'
   },
 
-  // 9. Dashrath-Ranoli Beat Dukans
+    // 9. Dashrath-Ranoli Beat Dukans (The 18 Real Retailers)
   {
-    id: 'duk-dsr-901',
-    shopName: 'Dashrath Village Kirana',
-    ownerName: 'Rohitbhai Shah',
-    phone: '9712012345',
-    tripId: 'trip-dashrath-ranoli',
-    address: 'Dashrath Village Bus Stand',
-    visitStatus: 'PENDING'
+    id: "duk-custom-1789893472983",
+    shopName: "KIRTI PRO STORES",
+    ownerName: "N/A",
+    phone: "0000000000",
+    tripId: "trip-dashrath-ranoli",
+    address: "RANOLI, BARODA",
+    visitStatus: "PENDING"
   },
   {
-    id: 'duk-dsr-902',
-    shopName: 'Ranoli Station Provision Store',
-    ownerName: 'Jagdishbhai Parmar',
-    phone: '9825023456',
-    tripId: 'trip-dashrath-ranoli',
-    address: 'Ranoli Railway Station Road',
-    visitStatus: 'PENDING'
+    id: "duk-custom-1789893502514",
+    shopName: "KALA KATLARI",
+    ownerName: "N/A",
+    phone: "0000000000",
+    tripId: "trip-dashrath-ranoli",
+    address: "RANOLI, BARODA",
+    visitStatus: "PENDING"
   },
   {
-    id: 'duk-dsr-903',
-    shopName: 'Ranoli GIDC Super Market',
-    ownerName: 'Bhaveshbhai Joshi',
-    phone: '9898034567',
-    tripId: 'trip-dashrath-ranoli',
-    address: 'Near Ranoli Overbridge',
-    visitStatus: 'PENDING'
+    id: "duk-custom-1789893547530",
+    shopName: "BHAVANI PRO STORES",
+    ownerName: "N/A",
+    phone: "0000000000",
+    tripId: "trip-dashrath-ranoli",
+    address: "RANOLI STATION,BARODA",
+    visitStatus: "PENDING"
   },
   {
-    id: 'duk-dsr-904',
-    shopName: 'Shreeji General Store',
-    ownerName: 'Kailashbhai Patel',
-    phone: '9426045678',
-    tripId: 'trip-dashrath-ranoli',
-    address: 'Dashrath Cross Road',
-    visitStatus: 'PENDING'
+    id: "duk-custom-1789893616369",
+    shopName: "GAYATRI MEDICAL STORES",
+    ownerName: "N/A",
+    phone: "7383277567",
+    tripId: "trip-dashrath-ranoli",
+    address: "RANOLI,BARODA",
+    gstNumber: "24AAXPT4338D1ZC",
+    visitStatus: "PENDING"
+  },
+  {
+    id: "duk-custom-1789893664068",
+    shopName: "DWARKESH GEN STORES",
+    ownerName: "N/A",
+    phone: "8000828829",
+    tripId: "trip-dashrath-ranoli",
+    address: "RANOLI NR,SHITAL PRO, BARODA",
+    visitStatus: "PENDING"
+  },
+  {
+    id: "duk-custom-1789893686584",
+    shopName: "RAJU PAN",
+    ownerName: "N/A",
+    phone: "0000000000",
+    tripId: "trip-dashrath-ranoli",
+    address: "RANOLI, GAM",
+    visitStatus: "PENDING"
+  },
+  {
+    id: "duk-custom-1789893723852",
+    shopName: "HARIOM PRO STORES",
+    ownerName: "N/A",
+    phone: "8734891232",
+    tripId: "trip-dashrath-ranoli",
+    address: "RANOLI, BARODA",
+    visitStatus: "PENDING"
+  },
+  {
+    id: "duk-custom-1789893777535",
+    shopName: "SANTI KIRANA STORES",
+    ownerName: "N/A",
+    phone: "9725246937",
+    tripId: "trip-dashrath-ranoli",
+    address: "RANOLI, BARODA",
+    gstNumber: "24ATQPM3855L",
+    visitStatus: "PENDING"
+  },
+  {
+    id: "duk-custom-1789893808885",
+    shopName: "SHIV SHAKTI MEDICAL STORES",
+    ownerName: "N/A",
+    phone: "0000000000",
+    tripId: "trip-dashrath-ranoli",
+    address: "RANOLI, GAM",
+    visitStatus: "PENDING"
+  },
+  {
+    id: "duk-custom-1789893832584",
+    shopName: "SANKAR PRO STORES",
+    ownerName: "N.A",
+    phone: "0000000000",
+    tripId: "trip-dashrath-ranoli",
+    address: "RANOLI, BARODA",
+    visitStatus: "PENDING"
+  },
+  {
+    id: "duk-custom-1789893869169",
+    shopName: "UJALA PRO STORES",
+    ownerName: "N/A",
+    phone: "9824317280",
+    tripId: "trip-dashrath-ranoli",
+    address: "RANOLI, BARODA",
+    visitStatus: "PENDING"
+  },
+  {
+    id: "duk-custom-1789893924535",
+    shopName: "ASHAPURA MEDICAL STORES(VASAD)",
+    ownerName: "N/A",
+    phone: "0000090909",
+    tripId: "trip-dashrath-ranoli",
+    address: "VASAD GAM G,12 TARAPUR HIGHWAY BARODA",
+    visitStatus: "PENDING"
+  },
+  {
+    id: "duk-custom-1789893955853",
+    shopName: "AMBIKA GEN STORES",
+    ownerName: "ASHOKBHAI",
+    phone: "0909090909",
+    tripId: "trip-dashrath-ranoli",
+    address: "RANOLI, GAM",
+    visitStatus: "PENDING"
+  },
+  {
+    id: "duk-custom-1789893995184",
+    shopName: "POOJA PRO STORES",
+    ownerName: "N/A",
+    phone: "9099620393",
+    tripId: "trip-dashrath-ranoli",
+    address: "RANOLI DHAVAL CINEMA, BARODA",
+    visitStatus: "PENDING"
+  },
+  {
+    id: "duk-custom-1789894037984",
+    shopName: "JAY MATAJI  PRO STORES",
+    ownerName: "N/A",
+    phone: "7048184044",
+    tripId: "trip-dashrath-ranoli",
+    address: "DASHRATH,INDIRANAGAR ROAD",
+    visitStatus: "PENDING"
+  },
+  {
+    id: "duk-custom-1789894062818",
+    shopName: "RAJLAXMI PRO STORES",
+    ownerName: "HN",
+    phone: "0909090909",
+    tripId: "trip-dashrath-ranoli",
+    address: "RANOLI, BARODA",
+    visitStatus: "PENDING"
+  },
+  {
+    id: "duk-custom-1789894101819",
+    shopName: "GANESH MEDICAL STORES",
+    ownerName: ".",
+    phone: "9090909090",
+    tripId: "trip-dashrath-ranoli",
+    address: "INDIRANAGAR ROAD,DASHRATH",
+    visitStatus: "PENDING"
+  },
+  {
+    id: "duk-custom-1789894141469",
+    shopName: "MATE SHREE SUPER",
+    ownerName: ".",
+    phone: "9090909090",
+    tripId: "trip-dashrath-ranoli",
+    address: "INDIRA NAGAR ROAD, NR GANESH MEDICAL DASHRATH",
+    visitStatus: "PENDING"
   }
 ];
 

@@ -113,13 +113,23 @@ export default function TripDukansPage() {
         }
       });
     };
+    const handleSyncEvents = () => {
+      if (foundTrip) {
+        setTrip(getStoredTrips().find((t) => t.id === foundTrip.id) || foundTrip);
+        setDukans(getDukansWithDailyStatus(foundTrip.id));
+      }
+    };
     window.addEventListener('focus', handleFocus);
     window.addEventListener('visibilitychange', handleFocus);
+    window.addEventListener('rushabh-dukans-synced', handleSyncEvents);
+    window.addEventListener('rushabh-orders-synced', handleSyncEvents);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('visibilitychange', handleFocus);
+      window.removeEventListener('rushabh-dukans-synced', handleSyncEvents);
+      window.removeEventListener('rushabh-orders-synced', handleSyncEvents);
     };
   }, [tripId, router]);
 

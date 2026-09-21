@@ -88,11 +88,34 @@ export const logoutUser = (): void => {
 export const getStoredTrips = (): Trip[] => {
   if (!isBrowser) return INITIAL_TRIPS;
   const data = localStorage.getItem(TRIPS_KEY);
-  if (!data) {
-    localStorage.setItem(TRIPS_KEY, JSON.stringify(INITIAL_TRIPS));
-    return INITIAL_TRIPS;
+  let trips: Trip[] = INITIAL_TRIPS;
+  if (data) {
+    try {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Merge with INITIAL_TRIPS to ensure no new beats are missing
+        const tripMap = new Map<string, Trip>();
+        INITIAL_TRIPS.forEach((t) => tripMap.set(t.id, t));
+        parsed.forEach((t) => {
+          const base = tripMap.get(t.id);
+          tripMap.set(t.id, { ...base, ...t });
+        });
+        trips = Array.from(tripMap.values());
+      }
+    } catch (e) {
+      trips = INITIAL_TRIPS;
+    }
   }
-  return JSON.parse(data);
+
+  // Dynamically calculate dukan count from stored dukans
+  const allDukans = getStoredDukans();
+  return trips.map((t) => {
+    const actualCount = allDukans.filter((d) => d.tripId === t.id).length;
+    return {
+      ...t,
+      dukanCount: Math.max(t.dukanCount || 0, actualCount),
+    };
+  });
 };
 
 export const saveTrips = (trips: Trip[]): void => {
@@ -101,15 +124,61 @@ export const saveTrips = (trips: Trip[]): void => {
   }
 };
 
+// Helper: Deduplicate dukans strictly by normalized (tripId + shopName) AND unique ID
+export const deduplicateDukans = (dukans: Dukan[]): Dukan[] => {
+  const map = new Map<string, Dukan>();
+
+  for (const d of dukans) {
+    if (!d || !d.shopName) continue;
+    const cleanName = d.shopName.trim().toLowerCase().replace(/\s+/g, ' ');
+    const normKey = `${d.tripId || ''}::${cleanName}`;
+
+    // Find if already exists by normKey or by ID
+    const existing = map.get(normKey) || (d.id ? Array.from(map.values()).find((x) => x.id === d.id) : undefined);
+
+    if (existing) {
+      // Merge: prefer custom ID (duk-custom-) if present, prefer non-zero phone, prefer actual owner name
+      const preferredId = d.id?.startsWith('duk-custom-') ? d.id : existing.id;
+      const merged: Dukan = {
+        ...existing,
+        ...d,
+        id: preferredId,
+        phone: d.phone && d.phone !== '0000000000' ? d.phone : existing.phone,
+        ownerName: d.ownerName && d.ownerName !== 'N/A' && d.ownerName !== '.' ? d.ownerName : existing.ownerName,
+        gstNumber: d.gstNumber || existing.gstNumber,
+      };
+      map.set(normKey, merged);
+    } else {
+      map.set(normKey, d);
+    }
+  }
+
+  return Array.from(map.values());
+};
+
 // DUKANS / RETAILERS
 export const getStoredDukans = (): Dukan[] => {
   if (!isBrowser) return INITIAL_DUKANS;
   const data = localStorage.getItem(DUKANS_KEY);
   if (!data) {
-    localStorage.setItem(DUKANS_KEY, JSON.stringify(INITIAL_DUKANS));
+    const cleanInitial = deduplicateDukans(INITIAL_DUKANS);
+    localStorage.setItem(DUKANS_KEY, JSON.stringify(cleanInitial));
+    return cleanInitial;
+  }
+  try {
+    const stored: Dukan[] = JSON.parse(data);
+    if (!Array.isArray(stored)) {
+      const cleanInitial = deduplicateDukans(INITIAL_DUKANS);
+      localStorage.setItem(DUKANS_KEY, JSON.stringify(cleanInitial));
+      return cleanInitial;
+    }
+
+    // Merge INITIAL_DUKANS with locally stored custom dukans with ZERO duplicates
+    const combined = [...INITIAL_DUKANS, ...stored];
+    return deduplicateDukans(combined);
+  } catch (e) {
     return INITIAL_DUKANS;
   }
-  return JSON.parse(data);
 };
 
 export const saveDukans = (dukans: Dukan[]): void => {
@@ -693,7 +762,7 @@ export const syncDukansWithBackend = async (): Promise<Dukan[]> => {
       const cleanLocal = localDukans.filter((d) => !deletedIds.has(d.id));
 
       // 2. BI-DIRECTIONAL UPLOAD:
-      // If this device has any local retailers (like the 18 added in Undera) that are not yet in the cloud,
+      // If this device has any local retailers (like the 18 added in Dashrath-Ranoli) that are not yet in the cloud,
       // upload them to the cloud right now!
       const cloudDukanIds = new Set(cloudDukans.map((d) => d.id));
       const initialDukanIds = new Set(INITIAL_DUKANS.map((d) => d.id));
@@ -703,40 +772,41 @@ export const syncDukansWithBackend = async (): Promise<Dukan[]> => {
 
       if (missingFromCloud.length > 0) {
         try {
-          await fetch('/api/dukans', {
+          const uploadRes = await fetch('/api/dukans', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ dukans: missingFromCloud }),
           });
-          cloudDukans.push(...missingFromCloud);
+          if (uploadRes.ok) {
+            cloudDukans.push(...missingFromCloud);
+          } else {
+            // Fallback: upload one by one if batch failed
+            for (const d of missingFromCloud) {
+              await fetch('/api/dukans', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dukan: d }),
+              }).catch(() => {});
+            }
+            cloudDukans.push(...missingFromCloud);
+          }
         } catch (e) {
           console.warn('[CloudDukans] Failed to upload local dukans:', e);
         }
       }
 
-      // 3. Merge: INITIAL_DUKANS + cloudDukans + cleanLocal (ensuring NO retailer is ever removed!)
-      const map = new Map<string, Dukan>();
-      INITIAL_DUKANS.forEach((d) => {
-        if (!deletedIds.has(d.id)) map.set(d.id, d);
-      });
-      cloudDukans.forEach((d) => {
-        if (!deletedIds.has(d.id)) map.set(d.id, d);
-      });
-      cleanLocal.forEach((d) => {
-        if (!deletedIds.has(d.id)) {
-          const prev = map.get(d.id);
-          map.set(d.id, { ...prev, ...d });
-        }
-      });
-
-      const merged = Array.from(map.values());
+      // 3. Merge: INITIAL_DUKANS + cloudDukans + cleanLocal with ZERO DUPLICATES!
+      const combined = [...INITIAL_DUKANS, ...cloudDukans, ...cleanLocal].filter(
+        (d) => !deletedIds.has(d.id)
+      );
+      const merged = deduplicateDukans(combined);
       saveDukans(merged);
 
       // 4. Update trip retailer counts across all beats
       const trips = getStoredTrips();
       const updatedTrips = trips.map((t) => {
         const count = merged.filter((d) => d.tripId === t.id).length;
-        return { ...t, dukanCount: count };
+        return { ...t, dukanCount: Math.max(t.dukanCount || 0, count) };
       });
       saveTrips(updatedTrips);
 
@@ -751,6 +821,43 @@ export const syncDukansWithBackend = async (): Promise<Dukan[]> => {
   }
 
   return getStoredDukans();
+};
+
+// Force push all local dukans to cloud storage
+export const forcePushAllLocalDukansToCloud = async (): Promise<{ success: boolean; count: number; error?: string }> => {
+  if (!isBrowser) return { success: false, count: 0, error: 'Not running in browser' };
+  if (!navigator.onLine) return { success: false, count: 0, error: 'Device is offline' };
+
+  try {
+    const all = getStoredDukans();
+    if (all.length === 0) return { success: true, count: 0 };
+
+    const res = await fetch('/api/dukans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dukans: all }),
+    });
+
+    if (res.ok) {
+      return { success: true, count: all.length };
+    }
+
+    // Fallback: single upload
+    let ok = 0;
+    for (const d of all) {
+      try {
+        const r = await fetch('/api/dukans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dukan: d }),
+        });
+        if (r.ok) ok++;
+      } catch (e) {}
+    }
+    return { success: ok > 0, count: ok };
+  } catch (err: any) {
+    return { success: false, count: 0, error: err?.message || 'Network error' };
+  }
 };
 
 // Master Function: Sync both Orders and Dukans
