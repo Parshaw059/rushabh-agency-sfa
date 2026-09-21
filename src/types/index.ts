@@ -38,6 +38,8 @@ export interface Dukan {
   lastOrderNumber?: string;
   lastOrderTime?: string;
   lastOrderDate?: string;
+  updatedAt?: string;
+  isCustom?: boolean;
 }
 
 export interface Company {
@@ -61,6 +63,7 @@ export interface Product {
   unitsPerBox: number; // Peti / Box count (e.g. 24 pcs - Editable by Owner)
   mrp: number;         // MRP (Salesman only sees this! Editable by Owner)
   isCustom?: boolean;
+  updatedAt?: string;
 }
 
 export interface CartItem {

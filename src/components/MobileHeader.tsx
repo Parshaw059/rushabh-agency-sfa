@@ -32,9 +32,6 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
     setIsSyncing(true);
     setSyncToast({ message: '🔄 Syncing Retailers, SKUs & Orders with Cloud...', type: 'info' });
     try {
-      // Force-push all local custom retailers & products first to ensure 100% upload
-      await forcePushAllLocalDukansToCloud().catch(() => {});
-      await forcePushAllLocalProductsToCloud().catch(() => {});
       const res = await syncAllWithBackend();
       const allDukans = res.dukans || [];
       const dsrCount = allDukans.filter((d) => d.tripId === 'trip-dashrath-ranoli').length;

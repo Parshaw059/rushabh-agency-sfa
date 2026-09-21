@@ -157,13 +157,22 @@ export const deduplicateDukans = (dukans: Dukan[]): Dukan[] => {
         map.delete(existingKey);
       }
       const preferredId = d.id?.startsWith('duk-custom-') ? d.id : (d.id || existing.id);
+
+      // Last-Write-Wins: Compare timestamps so the most recent edit wins
+      const dTime = d.updatedAt ? new Date(d.updatedAt).getTime() : 0;
+      const existingTime = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+      const isNewer = dTime >= existingTime;
+      const winner = isNewer ? d : existing;
+      const loser = isNewer ? existing : d;
+
       const merged: Dukan = {
-        ...existing,
-        ...d,
+        ...loser,
+        ...winner,
         id: preferredId,
-        phone: d.phone && d.phone !== '0000000000' ? d.phone : existing.phone,
-        ownerName: d.ownerName && d.ownerName !== 'N/A' && d.ownerName !== '.' ? d.ownerName : existing.ownerName,
-        gstNumber: d.gstNumber || existing.gstNumber,
+        phone: winner.phone && winner.phone !== '0000000000' ? winner.phone : loser.phone,
+        ownerName: winner.ownerName && winner.ownerName !== 'N/A' && winner.ownerName !== '.' ? winner.ownerName : loser.ownerName,
+        gstNumber: winner.gstNumber || loser.gstNumber,
+        updatedAt: isNewer ? (d.updatedAt || existing.updatedAt) : (existing.updatedAt || d.updatedAt),
       };
       map.set(normKey, merged);
     } else {
@@ -289,6 +298,7 @@ export const addDukan = (dukanData: {
   gstNumber?: string;
 }): Dukan => {
   const dukans = getStoredDukans();
+  const now = new Date().toISOString();
   const newDukan: Dukan = {
     id: `duk-custom-${Date.now()}`,
     shopName: dukanData.shopName.trim(),
@@ -298,6 +308,8 @@ export const addDukan = (dukanData: {
     address: dukanData.address.trim(),
     gstNumber: dukanData.gstNumber?.trim() || undefined,
     visitStatus: 'PENDING',
+    isCustom: true,
+    updatedAt: now,
   };
   dukans.push(newDukan);
   saveDukans(dukans);
@@ -360,6 +372,7 @@ export const updateDukan = (
   if (index === -1) return null;
 
   const current = dukans[index];
+  const now = new Date().toISOString();
   const updatedDukan: Dukan = {
     ...current,
     shopName: updatedFields.shopName.trim(),
@@ -367,6 +380,7 @@ export const updateDukan = (
     phone: updatedFields.phone.trim(),
     address: updatedFields.address.trim(),
     gstNumber: updatedFields.gstNumber?.trim() || undefined,
+    updatedAt: now,
   };
 
   dukans[index] = updatedDukan;
@@ -422,12 +436,21 @@ export const deduplicateProducts = (products: Product[]): Product[] => {
         map.delete(existingKey);
       }
       const preferredId = p.id?.startsWith('prod-custom-') ? p.id : (p.id || existing.id);
+
+      // Last-Write-Wins: Compare timestamps so the most recent edit wins!
+      const pTime = p.updatedAt ? new Date(p.updatedAt).getTime() : 0;
+      const existingTime = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+      const isNewer = pTime >= existingTime;
+      const winner = isNewer ? p : existing;
+      const loser = isNewer ? existing : p;
+
       map.set(normKey, {
-        ...existing,
-        ...p,
+        ...loser,
+        ...winner,
         id: preferredId,
-        mrp: typeof p.mrp === 'number' && !isNaN(p.mrp) ? p.mrp : existing.mrp,
-        unitsPerBox: typeof p.unitsPerBox === 'number' && !isNaN(p.unitsPerBox) ? p.unitsPerBox : existing.unitsPerBox,
+        mrp: typeof winner.mrp === 'number' && !isNaN(winner.mrp) ? winner.mrp : loser.mrp,
+        unitsPerBox: typeof winner.unitsPerBox === 'number' && !isNaN(winner.unitsPerBox) ? winner.unitsPerBox : loser.unitsPerBox,
+        updatedAt: isNewer ? (p.updatedAt || existing.updatedAt) : (existing.updatedAt || p.updatedAt),
       });
     } else {
       map.set(normKey, p);
@@ -470,10 +493,12 @@ export const saveProducts = (products: Product[]): void => {
 // Add Product (Owner or Salesman)
 export const addProduct = (newProduct: Omit<Product, 'id'>): Product => {
   const products = getStoredProducts();
+  const now = new Date().toISOString();
   const created: Product = {
     ...newProduct,
     id: `prod-custom-${Date.now()}`,
     isCustom: true,
+    updatedAt: now,
   };
   products.unshift(created);
   const deduplicated = deduplicateProducts(products);
@@ -502,9 +527,15 @@ export const updateProduct = (
 ): Product[] => {
   const products = getStoredProducts();
   let updatedProduct: Product | null = null;
+  const now = new Date().toISOString();
+
   const updated = products.map((p) => {
-    if (p.id === productId) {
-      const merged = { ...p, ...updates };
+    if (p.id.trim() === productId.trim()) {
+      const merged: Product = {
+        ...p,
+        ...updates,
+        updatedAt: now,
+      };
       updatedProduct = merged;
       return merged;
     }
@@ -918,14 +949,32 @@ export const syncDukansWithBackend = async (): Promise<Dukan[]> => {
       const merged = deduplicateDukans(combined);
       saveDukans(merged);
 
-      // Auto-upload any local custom dukans not yet in cloud
-      const cloudIds = new Set(cloudDukans.map((d) => d.id));
-      const unSyncedCustom = cleanLocal.filter((d) => d.id?.startsWith('duk-custom-') && !cloudIds.has(d.id));
-      if (unSyncedCustom.length > 0) {
+      // Auto-upload any local custom dukans or newer local edits not yet in cloud
+      const cloudMap = new Map<string, Dukan>();
+      cloudDukans.forEach((d) => {
+        const cleanName = d.shopName.trim().toLowerCase().replace(/\s+/g, ' ');
+        const normKey = `${d.tripId || ''}::${cleanName}`;
+        cloudMap.set(normKey, d);
+        if (d.id) cloudMap.set(d.id, d);
+      });
+
+      const localNewerDukans = cleanLocal.filter((localD) => {
+        const cleanName = localD.shopName.trim().toLowerCase().replace(/\s+/g, ' ');
+        const normKey = `${localD.tripId || ''}::${cleanName}`;
+        const cloudD = cloudMap.get(normKey) || (localD.id ? cloudMap.get(localD.id) : undefined);
+        if (!cloudD) {
+          return localD.id?.startsWith('duk-custom-');
+        }
+        const localTime = localD.updatedAt ? new Date(localD.updatedAt).getTime() : 0;
+        const cloudTime = cloudD.updatedAt ? new Date(cloudD.updatedAt).getTime() : 0;
+        return localTime > cloudTime;
+      });
+
+      if (localNewerDukans.length > 0) {
         fetch('/api/dukans', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dukans: unSyncedCustom }),
+          body: JSON.stringify({ dukans: localNewerDukans }),
         }).catch(() => {});
       }
 
@@ -1012,14 +1061,38 @@ export const syncProductsWithBackend = async (): Promise<Product[]> => {
       const merged = deduplicateProducts(combined);
       saveProducts(merged);
 
-      // Auto-upload any local custom products not yet in cloud
-      const cloudIds = new Set(cloudProducts.map((p) => p.id));
-      const unSyncedCustom = cleanLocal.filter((p) => p.isCustom && !cloudIds.has(p.id));
-      if (unSyncedCustom.length > 0) {
+      // Auto-upload any local custom products or newer local edits not yet in cloud
+      const cloudMap = new Map<string, Product>();
+      cloudProducts.forEach((p) => {
+        const cleanWdms = (p.wdmsCode || '').trim().toLowerCase();
+        const cleanName = p.name.trim().toLowerCase().replace(/\s+/g, ' ');
+        const cleanCompany = (p.companyId || '').trim().toLowerCase();
+        const cleanPack = (p.packSize || '').trim().toLowerCase();
+        const normKey = cleanWdms ? `wdms::${cleanWdms}` : `comp::${cleanCompany}::${cleanName}::${cleanPack}`;
+        cloudMap.set(normKey, p);
+        if (p.id) cloudMap.set(p.id, p);
+      });
+
+      const localNewerProducts = cleanLocal.filter((localP) => {
+        const cleanWdms = (localP.wdmsCode || '').trim().toLowerCase();
+        const cleanName = localP.name.trim().toLowerCase().replace(/\s+/g, ' ');
+        const cleanCompany = (localP.companyId || '').trim().toLowerCase();
+        const cleanPack = (localP.packSize || '').trim().toLowerCase();
+        const normKey = cleanWdms ? `wdms::${cleanWdms}` : `comp::${cleanCompany}::${cleanName}::${cleanPack}`;
+        const cloudP = cloudMap.get(normKey) || (localP.id ? cloudMap.get(localP.id) : undefined);
+        if (!cloudP) {
+          return localP.isCustom || localP.id?.startsWith('prod-custom-');
+        }
+        const localTime = localP.updatedAt ? new Date(localP.updatedAt).getTime() : 0;
+        const cloudTime = cloudP.updatedAt ? new Date(cloudP.updatedAt).getTime() : 0;
+        return localTime > cloudTime;
+      });
+
+      if (localNewerProducts.length > 0) {
         fetch('/api/products', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ products: unSyncedCustom }),
+          body: JSON.stringify({ products: localNewerProducts }),
         }).catch(() => {});
       }
 

@@ -331,10 +331,19 @@ export const saveCloudDukan = async (dukan: Dukan): Promise<boolean> => {
         (d.shopName.trim().toLowerCase().replace(/\s+/g, ' ') === cleanShop && d.tripId === dukan.tripId)
     );
 
+    const now = dukan.updatedAt || new Date().toISOString();
+    const dukanWithTime = { ...dukan, updatedAt: now };
+
     if (existingIdx >= 0) {
-      currentDukans[existingIdx] = { ...currentDukans[existingIdx], ...dukan };
+      const existing = currentDukans[existingIdx];
+      const existingTime = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+      const incomingTime = new Date(now).getTime();
+
+      if (incomingTime >= existingTime) {
+        currentDukans[existingIdx] = { ...existing, ...dukanWithTime };
+      }
     } else {
-      currentDukans.push(dukan);
+      currentDukans.push(dukanWithTime);
     }
 
     const updatedDeletedIds = deletedIds.filter((id) => id !== dukan.id);
@@ -384,7 +393,22 @@ export const saveCloudDukansBatch = async (incomingDukans: Dukan[]): Promise<boo
           map.delete(existingKey);
         }
         const preferredId = d.id?.startsWith('duk-custom-') ? d.id : (d.id || existing.id);
-        map.set(normKey, { ...existing, ...d, id: preferredId });
+
+        const dTime = d.updatedAt ? new Date(d.updatedAt).getTime() : 0;
+        const existingTime = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+        const isNewer = dTime >= existingTime;
+        const winner = isNewer ? d : existing;
+        const loser = isNewer ? existing : d;
+
+        map.set(normKey, {
+          ...loser,
+          ...winner,
+          id: preferredId,
+          phone: winner.phone && winner.phone !== '0000000000' ? winner.phone : loser.phone,
+          ownerName: winner.ownerName && winner.ownerName !== 'N/A' && winner.ownerName !== '.' ? winner.ownerName : loser.ownerName,
+          gstNumber: winner.gstNumber || loser.gstNumber,
+          updatedAt: isNewer ? (d.updatedAt || existing.updatedAt) : (existing.updatedAt || d.updatedAt),
+        });
       } else {
         map.set(normKey, d);
       }
@@ -527,10 +551,19 @@ export const saveCloudProduct = async (product: Product): Promise<boolean> => {
       return false;
     });
 
+    const now = product.updatedAt || new Date().toISOString();
+    const productWithTime = { ...product, updatedAt: now };
+
     if (existingIdx >= 0) {
-      currentProducts[existingIdx] = { ...currentProducts[existingIdx], ...product };
+      const existing = currentProducts[existingIdx];
+      const existingTime = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+      const incomingTime = new Date(now).getTime();
+
+      if (incomingTime >= existingTime) {
+        currentProducts[existingIdx] = { ...existing, ...productWithTime };
+      }
     } else {
-      currentProducts.unshift(product);
+      currentProducts.unshift(productWithTime);
     }
 
     const updatedDeletedIds = deletedIds.filter((id) => id !== product.id);
@@ -576,7 +609,21 @@ export const saveCloudProductsBatch = async (incomingProducts: Product[]): Promi
           map.delete(existingKey);
         }
         const preferredId = p.id?.startsWith('prod-custom-') ? p.id : (p.id || existing.id);
-        map.set(normKey, { ...existing, ...p, id: preferredId });
+
+        const pTime = p.updatedAt ? new Date(p.updatedAt).getTime() : 0;
+        const existingTime = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+        const isNewer = pTime >= existingTime;
+        const winner = isNewer ? p : existing;
+        const loser = isNewer ? existing : p;
+
+        map.set(normKey, {
+          ...loser,
+          ...winner,
+          id: preferredId,
+          mrp: typeof winner.mrp === 'number' && !isNaN(winner.mrp) ? winner.mrp : loser.mrp,
+          unitsPerBox: typeof winner.unitsPerBox === 'number' && !isNaN(winner.unitsPerBox) ? winner.unitsPerBox : loser.unitsPerBox,
+          updatedAt: isNewer ? (p.updatedAt || existing.updatedAt) : (existing.updatedAt || p.updatedAt),
+        });
       } else {
         map.set(normKey, p);
       }

@@ -209,8 +209,8 @@ export default function SalesmanOrderTakingPage() {
     e.preventDefault();
     if (!editingProduct) return;
 
-    const parsedMrp = parseFloat(editMrp) || editingProduct.mrp;
-    const parsedUnitsPerBox = parseInt(editUnitsPerBox) || editingProduct.unitsPerBox;
+    const parsedMrp = !isNaN(parseFloat(editMrp)) ? parseFloat(editMrp) : editingProduct.mrp;
+    const parsedUnitsPerBox = !isNaN(parseInt(editUnitsPerBox)) ? parseInt(editUnitsPerBox) : editingProduct.unitsPerBox;
 
     const updatedList = updateProduct(editingProduct.id, {
       name: editName.trim() || editingProduct.name,
