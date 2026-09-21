@@ -368,24 +368,68 @@ export const updateDukan = (
   return updatedDukan;
 };
 
-// PRODUCTS (CRUD FOR OWNER)
+// Helper: Deduplicate products strictly by WDMS code or companyId + name + packSize
+export const deduplicateProducts = (products: Product[]): Product[] => {
+  const map = new Map<string, Product>();
+
+  for (const p of products) {
+    if (!p || !p.name) continue;
+    const cleanWdms = (p.wdmsCode || '').trim().toLowerCase();
+    const cleanName = p.name.trim().toLowerCase().replace(/\s+/g, ' ');
+    const cleanCompany = (p.companyId || '').trim().toLowerCase();
+    const cleanPack = (p.packSize || '').trim().toLowerCase();
+
+    const normKey = cleanWdms ? `wdms::${cleanWdms}` : `comp::${cleanCompany}::${cleanName}::${cleanPack}`;
+    const existing = map.get(normKey) || (p.id ? Array.from(map.values()).find((x) => x.id === p.id) : undefined);
+
+    if (existing) {
+      const preferredId = p.id?.startsWith('prod-custom-') ? p.id : existing.id;
+      map.set(normKey, {
+        ...existing,
+        ...p,
+        id: preferredId,
+        mrp: typeof p.mrp === 'number' && !isNaN(p.mrp) ? p.mrp : existing.mrp,
+        unitsPerBox: typeof p.unitsPerBox === 'number' && !isNaN(p.unitsPerBox) ? p.unitsPerBox : existing.unitsPerBox,
+      });
+    } else {
+      map.set(normKey, p);
+    }
+  }
+
+  return Array.from(map.values());
+};
+
+// PRODUCTS (CRUD FOR OWNER & SALESMAN)
 export const getStoredProducts = (): Product[] => {
   if (!isBrowser) return INITIAL_PRODUCTS;
   const data = localStorage.getItem(PRODUCTS_KEY);
   if (!data) {
-    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(INITIAL_PRODUCTS));
+    const cleanInitial = deduplicateProducts(INITIAL_PRODUCTS);
+    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(cleanInitial));
+    return cleanInitial;
+  }
+  try {
+    const stored: Product[] = JSON.parse(data);
+    if (!Array.isArray(stored)) {
+      const cleanInitial = deduplicateProducts(INITIAL_PRODUCTS);
+      localStorage.setItem(PRODUCTS_KEY, JSON.stringify(cleanInitial));
+      return cleanInitial;
+    }
+    // Merge INITIAL_PRODUCTS and stored with ZERO duplicates, preserving edits
+    const combined = [...INITIAL_PRODUCTS, ...stored];
+    return deduplicateProducts(combined);
+  } catch (e) {
     return INITIAL_PRODUCTS;
   }
-  return JSON.parse(data);
 };
 
 export const saveProducts = (products: Product[]): void => {
   if (isBrowser) {
-    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
+    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(deduplicateProducts(products)));
   }
 };
 
-// Owner Feature: Add Product
+// Add Product (Owner or Salesman)
 export const addProduct = (newProduct: Omit<Product, 'id'>): Product => {
   const products = getStoredProducts();
   const created: Product = {
@@ -394,35 +438,79 @@ export const addProduct = (newProduct: Omit<Product, 'id'>): Product => {
     isCustom: true,
   };
   products.unshift(created);
-  saveProducts(products);
+  const deduplicated = deduplicateProducts(products);
+  saveProducts(deduplicated);
+
+  // Sync to Cloud Store immediately
+  if (isBrowser && navigator.onLine) {
+    fetch('/api/products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product: created }),
+    }).catch((e) => console.warn('[Storage] Failed to sync new product to cloud:', e));
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('rushabh-products-synced', { detail: deduplicated }));
+  }
+
   return created;
 };
 
-// Owner Feature: Change MRP, Box Packaging Quantity, or details
+// Update Product (Change MRP, Box Packaging, or Details)
 export const updateProduct = (
   productId: string,
   updates: Partial<Pick<Product, 'mrp' | 'unitsPerBox' | 'name' | 'packSize' | 'category'>>
 ): Product[] => {
   const products = getStoredProducts();
+  let updatedProduct: Product | null = null;
   const updated = products.map((p) => {
     if (p.id === productId) {
-      return {
-        ...p,
-        ...updates,
-      };
+      const merged = { ...p, ...updates };
+      updatedProduct = merged;
+      return merged;
     }
     return p;
   });
-  saveProducts(updated);
-  return updated;
+
+  const deduplicated = deduplicateProducts(updated);
+  saveProducts(deduplicated);
+
+  // Sync to Cloud Store immediately
+  if (isBrowser && navigator.onLine && updatedProduct) {
+    fetch('/api/products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product: updatedProduct }),
+    }).catch((e) => console.warn('[Storage] Failed to sync updated product to cloud:', e));
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('rushabh-products-synced', { detail: deduplicated }));
+  }
+
+  return deduplicated;
 };
 
-// Owner Feature: Delete Product
+// Delete Product
 export const deleteProduct = (productId: string): Product[] => {
   const products = getStoredProducts();
   const updated = products.filter((p) => p.id !== productId);
-  saveProducts(updated);
-  return updated;
+  const deduplicated = deduplicateProducts(updated);
+  saveProducts(deduplicated);
+
+  // Delete from Cloud Store immediately
+  if (isBrowser && navigator.onLine) {
+    fetch(`/api/products/${productId}`, {
+      method: 'DELETE',
+    }).catch((e) => console.warn('[Storage] Failed to delete product from cloud:', e));
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('rushabh-products-synced', { detail: deduplicated }));
+  }
+
+  return deduplicated;
 };
 
 // ORDERS (FOR SALESMEN & OWNER)
@@ -710,28 +798,7 @@ export const syncOrdersWithBackend = async (): Promise<Order[]> => {
         (o) => !deletedIds.has(o.id) && !deletedIds.has(o.orderNumber)
       );
 
-      // 2. BI-DIRECTIONAL UPLOAD:
-      // If this device (e.g. phone) has orders stored locally that are NOT yet in the cloud database
-      // and haven't been deleted, upload them to the cloud right now!
-      const cloudOrderIds = new Set(cloudOrders.map((o: Order) => o.id));
-      const cloudOrderNumbers = new Set(cloudOrders.map((o: Order) => o.orderNumber));
-
-      for (const localOrd of cleanLocal) {
-        if (!cloudOrderIds.has(localOrd.id) && !cloudOrderNumbers.has(localOrd.orderNumber)) {
-          try {
-            await fetch('/api/orders', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(localOrd),
-            });
-            cloudOrders.unshift(localOrd);
-          } catch (e) {
-            console.warn('[CloudSync] Failed to upload local order to cloud:', e);
-          }
-        }
-      }
-
-      // 3. Merge unique orders
+      // 2. Merge unique orders
       const map = new Map<string, Order>();
       cleanLocal.forEach((o: Order) => map.set(o.id, o));
       cloudOrders.forEach((o: Order) => map.set(o.id, o));
@@ -805,39 +872,7 @@ export const syncDukansWithBackend = async (): Promise<Dukan[]> => {
       // 1. Filter out deleted
       const cleanLocal = localDukans.filter((d) => !deletedIds.has(d.id));
 
-      // 2. BI-DIRECTIONAL UPLOAD:
-      // If this device has any local retailers (like the 18 added in Dashrath-Ranoli) that are not yet in the cloud,
-      // upload them to the cloud right now!
-      const cloudDukanIds = new Set(cloudDukans.map((d) => d.id));
-      const initialDukanIds = new Set(INITIAL_DUKANS.map((d) => d.id));
-      const missingFromCloud = cleanLocal.filter(
-        (d) => !cloudDukanIds.has(d.id) && !initialDukanIds.has(d.id)
-      );
-
-      if (missingFromCloud.length > 0) {
-        try {
-          const uploadRes = await fetch('/api/dukans', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dukans: missingFromCloud }),
-          });
-          if (uploadRes.ok) {
-            cloudDukans.push(...missingFromCloud);
-          } else {
-            // Fallback: upload one by one if batch failed
-            for (const d of missingFromCloud) {
-              await fetch('/api/dukans', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dukan: d }),
-              }).catch(() => {});
-            }
-            cloudDukans.push(...missingFromCloud);
-          }
-        } catch (e) {
-          console.warn('[CloudDukans] Failed to upload local dukans:', e);
-        }
-      }
+      // 2. Merge: INITIAL_DUKANS + cloudDukans + cleanLocal with ZERO DUPLICATES!
 
       // 3. Merge: INITIAL_DUKANS + cloudDukans + cleanLocal with ZERO DUPLICATES!
       const combined = [...INITIAL_DUKANS, ...cloudDukans, ...cleanLocal].filter(
@@ -904,13 +939,76 @@ export const forcePushAllLocalDukansToCloud = async (): Promise<{ success: boole
   }
 };
 
-// Master Function: Sync both Orders and Dukans
-export const syncAllWithBackend = async (): Promise<{ orders: Order[]; dukans: Dukan[] }> => {
-  const [orders, dukans] = await Promise.all([
+// Fetch latest products from Cloud, upload any local custom products, and merge
+export const syncProductsWithBackend = async (): Promise<Product[]> => {
+  if (!isBrowser) return getStoredProducts();
+  if (!navigator.onLine) return getStoredProducts();
+
+  try {
+    const res = await fetch('/api/products', { cache: 'no-store' });
+    if (!res.ok) return getStoredProducts();
+    const data = await res.json();
+    if (data.success && Array.isArray(data.products)) {
+      const cloudProducts: Product[] = data.products;
+      const deletedIds = new Set<string>(Array.isArray(data.deletedIds) ? data.deletedIds : []);
+      const localProducts = getStoredProducts();
+
+      // 1. Filter out deleted
+      const cleanLocal = localProducts.filter((p) => !deletedIds.has(p.id));
+
+      // 2. Merge: INITIAL_PRODUCTS + cloudProducts + cleanLocal with ZERO DUPLICATES!
+      const combined = [...INITIAL_PRODUCTS, ...cloudProducts, ...cleanLocal].filter(
+        (p) => !deletedIds.has(p.id)
+      );
+      const merged = deduplicateProducts(combined);
+      saveProducts(merged);
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('rushabh-products-synced', { detail: merged }));
+      }
+
+      return merged;
+    }
+  } catch (err) {
+    console.warn('[CloudProducts] Error syncing products:', err);
+  }
+
+  return getStoredProducts();
+};
+
+// Force push all local products to cloud storage
+export const forcePushAllLocalProductsToCloud = async (): Promise<{ success: boolean; count: number; error?: string }> => {
+  if (!isBrowser) return { success: false, count: 0, error: 'Not running in browser' };
+  if (!navigator.onLine) return { success: false, count: 0, error: 'Device is offline' };
+
+  try {
+    const all = getStoredProducts();
+    if (all.length === 0) return { success: true, count: 0 };
+
+    const res = await fetch('/api/products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ products: all }),
+    });
+
+    if (res.ok) {
+      return { success: true, count: all.length };
+    }
+
+    return { success: false, count: 0, error: 'Failed to push products to cloud' };
+  } catch (err: any) {
+    return { success: false, count: 0, error: err?.message || 'Network error' };
+  }
+};
+
+// Master Function: Sync Orders, Dukans, and Products
+export const syncAllWithBackend = async (): Promise<{ orders: Order[]; dukans: Dukan[]; products: Product[] }> => {
+  const [orders, dukans, products] = await Promise.all([
     syncOrdersWithBackend(),
     syncDukansWithBackend(),
+    syncProductsWithBackend(),
   ]);
-  return { orders, dukans };
+  return { orders, dukans, products };
 };
 
 // Listen for network restore to auto-flush queue
@@ -918,6 +1016,7 @@ if (isBrowser) {
   window.addEventListener('online', () => {
     flushOfflineOrderQueue();
     syncDukansWithBackend();
+    syncProductsWithBackend();
   });
 }
 

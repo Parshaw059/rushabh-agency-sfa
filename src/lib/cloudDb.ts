@@ -1,4 +1,4 @@
-import { Order, OrderItemRecord, Dukan } from '@/types';
+import { Order, OrderItemRecord, Dukan, Product } from '@/types';
 import {
   getOrdersFromDb,
   insertOrderToDb,
@@ -382,3 +382,174 @@ export const deleteCloudDukan = async (dukanId: string): Promise<boolean> => {
     return deletedMysql;
   }
 };
+
+// ==============================================================
+// PRODUCTS / SKUS (CROSS-DEVICE CLOUD STORE)
+// ==============================================================
+
+// Helper: Fetch products and deleted product IDs from GitHub Gist
+const getProductsFromGist = async (): Promise<{ products: Product[]; deletedIds: string[] }> => {
+  try {
+    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      headers: {
+        Authorization: `token ${GITHUB_TOKEN}`,
+        'User-Agent': 'Rushabh-Agency-SFA',
+        Accept: 'application/vnd.github.v3+json',
+      },
+      cache: 'no-store',
+    });
+
+    if (!res.ok) {
+      console.warn('[CloudDb] Gist fetch HTTP error (products):', res.status);
+      return { products: [], deletedIds: [] };
+    }
+
+    const data = await res.json();
+    const productsContent = data.files?.['products.json']?.content;
+    const deletedContent = data.files?.['deleted_product_ids.json']?.content;
+
+    let products: Product[] = [];
+    if (productsContent) {
+      try {
+        const parsed = JSON.parse(productsContent);
+        if (Array.isArray(parsed)) products = parsed;
+      } catch (e) {}
+    }
+
+    let deletedIds: string[] = [];
+    if (deletedContent) {
+      try {
+        const parsed = JSON.parse(deletedContent);
+        if (Array.isArray(parsed)) deletedIds = parsed;
+      } catch (e) {}
+    }
+
+    return { products, deletedIds };
+  } catch (err) {
+    console.warn('[CloudDb] Gist read exception (products):', err);
+    return { products: [], deletedIds: [] };
+  }
+};
+
+// Helper: Save all products and deleted IDs to GitHub Gist
+const saveProductsToGist = async (products: Product[], deletedIds?: string[]): Promise<boolean> => {
+  try {
+    const filesPayload: any = {
+      'products.json': {
+        content: JSON.stringify(products, null, 2),
+      },
+    };
+
+    if (deletedIds !== undefined) {
+      filesPayload['deleted_product_ids.json'] = {
+        content: JSON.stringify(deletedIds, null, 2),
+      };
+    }
+
+    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `token ${GITHUB_TOKEN}`,
+        'User-Agent': 'Rushabh-Agency-SFA',
+        'Content-Type': 'application/json',
+        Accept: 'application/vnd.github.v3+json',
+      },
+      body: JSON.stringify({
+        files: filesPayload,
+      }),
+    });
+
+    return res.ok;
+  } catch (err) {
+    console.warn('[CloudDb] Gist write exception (products):', err);
+    return false;
+  }
+};
+
+// Master Function: Get all products across devices
+export const getCloudProducts = async (): Promise<{ products: Product[]; deletedIds: string[]; source: string }> => {
+  const { products, deletedIds } = await getProductsFromGist();
+  return { products, deletedIds, source: 'cloud_gist' };
+};
+
+// Master Function: Save or update a single product
+export const saveCloudProduct = async (product: Product): Promise<boolean> => {
+  try {
+    const { products: currentProducts, deletedIds } = await getProductsFromGist();
+    const cleanWdms = (product.wdmsCode || '').trim().toLowerCase();
+    const cleanName = (product.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const cleanCompany = (product.companyId || '').trim().toLowerCase();
+    const cleanPack = (product.packSize || '').trim().toLowerCase();
+
+    const existingIdx = currentProducts.findIndex((p) => {
+      if (p.id === product.id) return true;
+      if (cleanWdms && p.wdmsCode && p.wdmsCode.trim().toLowerCase() === cleanWdms) return true;
+      if (
+        cleanCompany &&
+        p.companyId?.trim().toLowerCase() === cleanCompany &&
+        p.name?.trim().toLowerCase().replace(/\s+/g, ' ') === cleanName &&
+        (p.packSize || '').trim().toLowerCase() === cleanPack
+      ) {
+        return true;
+      }
+      return false;
+    });
+
+    if (existingIdx >= 0) {
+      currentProducts[existingIdx] = { ...currentProducts[existingIdx], ...product };
+    } else {
+      currentProducts.unshift(product);
+    }
+
+    const updatedDeletedIds = deletedIds.filter((id) => id !== product.id);
+    return await saveProductsToGist(currentProducts, updatedDeletedIds);
+  } catch (e) {
+    return false;
+  }
+};
+
+// Master Function: Batch save/merge multiple products
+export const saveCloudProductsBatch = async (incomingProducts: Product[]): Promise<boolean> => {
+  if (!incomingProducts || incomingProducts.length === 0) return true;
+
+  try {
+    const { products: currentProducts, deletedIds } = await getProductsFromGist();
+    const map = new Map<string, Product>();
+
+    for (const p of [...currentProducts, ...incomingProducts]) {
+      if (!p || !p.name || deletedIds.includes(p.id)) continue;
+      const cleanWdms = (p.wdmsCode || '').trim().toLowerCase();
+      const cleanName = (p.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const cleanCompany = (p.companyId || '').trim().toLowerCase();
+      const cleanPack = (p.packSize || '').trim().toLowerCase();
+
+      const normKey = cleanWdms ? `wdms::${cleanWdms}` : `comp::${cleanCompany}::${cleanName}::${cleanPack}`;
+      const existing = map.get(normKey) || (p.id ? Array.from(map.values()).find((x) => x.id === p.id) : undefined);
+
+      if (existing) {
+        const preferredId = p.id?.startsWith('prod-custom-') ? p.id : existing.id;
+        map.set(normKey, { ...existing, ...p, id: preferredId });
+      } else {
+        map.set(normKey, p);
+      }
+    }
+
+    const merged = Array.from(map.values());
+    return await saveProductsToGist(merged, deletedIds);
+  } catch (e) {
+    return false;
+  }
+};
+
+// Master Function: Delete product from Cloud Store
+export const deleteCloudProduct = async (productId: string): Promise<boolean> => {
+  try {
+    const { products: currentProducts, deletedIds } = await getProductsFromGist();
+    const filtered = currentProducts.filter((p) => p.id !== productId);
+    const updatedDeletedIds = Array.from(new Set([...deletedIds, productId]));
+    return await saveProductsToGist(filtered, updatedDeletedIds);
+  } catch (e) {
+    return false;
+  }
+};
+

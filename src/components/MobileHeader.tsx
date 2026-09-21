@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, User, LogOut, PackageCheck, Shield, Smartphone, RefreshCw } from 'lucide-react';
 import { User as UserType } from '@/types';
-import { logoutUser, syncAllWithBackend, forcePushAllLocalDukansToCloud } from '@/lib/storage';
+import { logoutUser, syncAllWithBackend, forcePushAllLocalDukansToCloud, forcePushAllLocalProductsToCloud } from '@/lib/storage';
 import { InstallAppModal } from './InstallAppModal';
 
 interface MobileHeaderProps {
@@ -30,15 +30,17 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
 
   const handleManualSync = async () => {
     setIsSyncing(true);
-    setSyncToast({ message: '🔄 Syncing Retailers & Orders with Cloud...', type: 'info' });
+    setSyncToast({ message: '🔄 Syncing Retailers, SKUs & Orders with Cloud...', type: 'info' });
     try {
-      // Force-push all local custom retailers first to ensure 100% upload
+      // Force-push all local custom retailers & products first to ensure 100% upload
       await forcePushAllLocalDukansToCloud().catch(() => {});
+      await forcePushAllLocalProductsToCloud().catch(() => {});
       const res = await syncAllWithBackend();
       const dukansCount = res.dukans?.length || 0;
+      const productsCount = res.products?.length || 0;
       const ordersCount = res.orders?.length || 0;
       setSyncToast({
-        message: `✅ Cloud Synced! ${dukansCount} Retailers & ${ordersCount} Orders Active`,
+        message: `✅ Cloud Synced! ${dukansCount} Retailers, ${productsCount} SKUs & ${ordersCount} Orders Active`,
         type: 'success',
       });
     } catch (e: any) {

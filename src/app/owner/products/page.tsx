@@ -10,6 +10,7 @@ import {
   addProduct,
   updateProduct,
   deleteProduct,
+  syncProductsWithBackend,
 } from '@/lib/storage';
 import { MobileHeader } from '@/components/MobileHeader';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
@@ -25,6 +26,7 @@ import {
   Tag,
   AlertCircle,
   Building2,
+  RefreshCw,
 } from 'lucide-react';
 
 export default function OwnerProductsPage() {
@@ -52,6 +54,7 @@ export default function OwnerProductsPage() {
   const [newMrp, setNewMrp] = useState('50');
 
   const [notification, setNotification] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     const user = getCurrentUser();
@@ -61,6 +64,37 @@ export default function OwnerProductsPage() {
     }
     setCurrentUser(user);
     setProducts(getStoredProducts());
+
+    // 1. Fetch fresh products from Cloud
+    const loadFreshProducts = () => {
+      syncProductsWithBackend().then((fresh) => {
+        if (fresh && fresh.length > 0) {
+          setProducts(fresh);
+        }
+      });
+    };
+
+    loadFreshProducts();
+
+    // 2. Poll every 4 seconds for updates from Salesman or Cloud
+    const interval = setInterval(loadFreshProducts, 4000);
+
+    // 3. Listen for immediate sync events
+    const handleSync = (e: any) => {
+      if (e.detail) {
+        setProducts(e.detail);
+      }
+    };
+    window.addEventListener('rushabh-products-synced', handleSync);
+    window.addEventListener('focus', loadFreshProducts);
+    window.addEventListener('visibilitychange', loadFreshProducts);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('rushabh-products-synced', handleSync);
+      window.removeEventListener('focus', loadFreshProducts);
+      window.removeEventListener('visibilitychange', loadFreshProducts);
+    };
   }, [router]);
 
   // Open Edit Modal

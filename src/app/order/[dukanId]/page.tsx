@@ -12,6 +12,9 @@ import {
   getTodayOrderByDukan,
   updateSalesmanOrder,
   syncOrdersWithBackend,
+  syncProductsWithBackend,
+  addProduct,
+  updateProduct,
 } from '@/lib/storage';
 import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp } from '@/utils/generatePdfReceipt';
 import { MobileHeader } from '@/components/MobileHeader';
@@ -34,6 +37,8 @@ import {
   Building2,
   Tag,
   Eye,
+  Edit2,
+  Sparkles,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -65,6 +70,24 @@ export default function SalesmanOrderTakingPage() {
   const [showSlipModal, setShowSlipModal] = useState(false);
   const [showTruckAnimation, setShowTruckAnimation] = useState(false);
 
+  // Edit SKU modal state (Salesman can change MRP or Box Packaging)
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editMrp, setEditMrp] = useState('');
+  const [editUnitsPerBox, setEditUnitsPerBox] = useState('');
+  const [editName, setEditName] = useState('');
+  const [editPackSize, setEditPackSize] = useState('');
+
+  // Add SKU modal state (Salesman can add missing SKU from the field)
+  const [isAddSkuModalOpen, setIsAddSkuModalOpen] = useState(false);
+  const [newCompanyId, setNewCompanyId] = useState('dabur');
+  const [newName, setNewName] = useState('');
+  const [newPackSize, setNewPackSize] = useState('');
+  const [newCategory, setNewCategory] = useState('General');
+  const [newWdmsCode, setNewWdmsCode] = useState('');
+  const [newUnitsPerBox, setNewUnitsPerBox] = useState('24');
+  const [newMrp, setNewMrp] = useState('50');
+  const [skuNotification, setSkuNotification] = useState<string | null>(null);
+
   useEffect(() => {
     const user = getCurrentUser();
     if (!user) {
@@ -81,6 +104,26 @@ export default function SalesmanOrderTakingPage() {
     setDukan(loadedDukan);
     const loadedProducts = getStoredProducts();
     setProducts(loadedProducts);
+
+    // Fetch latest products from Cloud
+    const refreshProducts = () => {
+      syncProductsWithBackend().then((fresh) => {
+        if (fresh && fresh.length > 0) {
+          setProducts(fresh);
+        }
+      });
+    };
+
+    refreshProducts();
+    const prodInterval = setInterval(refreshProducts, 4000);
+
+    const handleProductsSynced = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setProducts(e.detail);
+      }
+    };
+    window.addEventListener('rushabh-products-synced', handleProductsSynced);
+    window.addEventListener('focus', refreshProducts);
 
     // Check if a bill was ALREADY booked today for this retailer
     const checkOrder = () => {
@@ -117,7 +160,94 @@ export default function SalesmanOrderTakingPage() {
 
     checkOrder();
     syncOrdersWithBackend().then(() => checkOrder());
+
+    return () => {
+      clearInterval(prodInterval);
+      window.removeEventListener('rushabh-products-synced', handleProductsSynced);
+      window.removeEventListener('focus', refreshProducts);
+    };
   }, [dukanId, router]);
+
+  // Open Edit Product Modal
+  const handleOpenEditProduct = (p: Product, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingProduct(p);
+    setEditMrp(p.mrp.toString());
+    setEditUnitsPerBox(p.unitsPerBox.toString());
+    setEditName(p.name);
+    setEditPackSize(p.packSize);
+  };
+
+  // Save Product Edit (syncs to Cloud & Owner profile immediately)
+  const handleSaveProductEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+
+    const parsedMrp = parseFloat(editMrp) || editingProduct.mrp;
+    const parsedUnitsPerBox = parseInt(editUnitsPerBox) || editingProduct.unitsPerBox;
+
+    const updatedList = updateProduct(editingProduct.id, {
+      name: editName.trim() || editingProduct.name,
+      packSize: editPackSize.trim() || editingProduct.packSize,
+      mrp: parsedMrp,
+      unitsPerBox: parsedUnitsPerBox,
+    });
+
+    setProducts(updatedList);
+
+    // Update cart item pricing if already added
+    setCartItems((prev) =>
+      prev.map((item) => {
+        if (item.product.id === editingProduct.id) {
+          const updatedProd = {
+            ...item.product,
+            name: editName.trim() || item.product.name,
+            packSize: editPackSize.trim() || item.product.packSize,
+            mrp: parsedMrp,
+            unitsPerBox: parsedUnitsPerBox,
+          };
+          const totalUnits = item.boxQty * parsedUnitsPerBox + item.looseQty;
+          return {
+            ...item,
+            product: updatedProd,
+            totalUnits,
+            lineMrpTotal: totalUnits * parsedMrp,
+          };
+        }
+        return item;
+      })
+    );
+
+    setEditingProduct(null);
+    setSkuNotification(`Updated "${editingProduct.name}": MRP ₹${parsedMrp}, 1 Box = ${parsedUnitsPerBox} pcs (Cloud Synced to Owner Profile)`);
+    setTimeout(() => setSkuNotification(null), 4000);
+  };
+
+  // Add SKU Submit (syncs to Cloud & Owner profile immediately)
+  const handleAddSkuSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim()) return;
+
+    const comp = INITIAL_COMPANIES.find((c) => c.id === newCompanyId) || INITIAL_COMPANIES[0];
+    const created = addProduct({
+      companyId: comp.id,
+      companyName: comp.name,
+      category: newCategory.trim() || 'General',
+      name: newName.trim(),
+      packSize: newPackSize.trim() || 'Standard',
+      wdmsCode: newWdmsCode.trim() || `${comp.code}-${Date.now().toString().slice(-4)}`,
+      unitsPerBox: parseInt(newUnitsPerBox) || 24,
+      mrp: parseFloat(newMrp) || 50.0,
+    });
+
+    setProducts(getStoredProducts());
+    setIsAddSkuModalOpen(false);
+    setNewName('');
+    setNewPackSize('');
+    setNewWdmsCode('');
+    setSkuNotification(`Added "${created.name}" (₹${created.mrp}) successfully! Synced across all devices & Owner profile.`);
+    setTimeout(() => setSkuNotification(null), 4000);
+  };
 
   // Handle Box & Loose quantity update
   const handleUpdateItem = (product: Product, boxQty: number, looseQty: number) => {
@@ -327,6 +457,17 @@ export default function SalesmanOrderTakingPage() {
           </div>
         </div>
 
+        {/* SKU Action Notification Toast */}
+        {skuNotification && (
+          <div className="bg-emerald-600 text-white px-3.5 py-2.5 rounded-2xl text-xs font-black shadow-md flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-200 flex-shrink-0" />
+            <span className="flex-1">{skuNotification}</span>
+            <button onClick={() => setSkuNotification(null)} className="p-0.5 hover:bg-white/20 rounded">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Active Company & Search Bar */}
         <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm space-y-2.5">
           <div className="flex items-center justify-between">
@@ -336,9 +477,23 @@ export default function SalesmanOrderTakingPage() {
                 {activeCompany.name}
               </h3>
             </div>
-            <span className="text-[10px] text-slate-400 font-bold">
-              {displayedProducts.length} Items Available
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-slate-400 font-bold">
+                {displayedProducts.length} Items
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setNewCompanyId(activeCompany.id);
+                  setIsAddSkuModalOpen(true);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] flex items-center gap-1 shadow-xs transition-colors"
+                title="Add new SKU for this company"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add SKU</span>
+              </button>
+            </div>
           </div>
 
           <div className="relative">
@@ -403,11 +558,21 @@ export default function SalesmanOrderTakingPage() {
                       </div>
                     </div>
 
-                    {/* Prominent MRP Only */}
-                    <div className="text-right flex-shrink-0 bg-slate-50 p-2 rounded-xl border border-slate-200/80 min-w-[75px]">
-                      <span className="text-[9px] text-slate-400 uppercase font-black tracking-wider block">
-                        MRP Price
-                      </span>
+                    {/* Prominent MRP Only + Quick Edit */}
+                    <div className="text-right flex-shrink-0 bg-slate-50 p-2 rounded-xl border border-slate-200/80 min-w-[82px]">
+                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                        <span className="text-[9px] text-slate-400 uppercase font-black tracking-wider block">
+                          MRP
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => handleOpenEditProduct(product, e)}
+                          className="p-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-colors"
+                          title="Edit MRP or Box Packing"
+                        >
+                          <Edit2 className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
                       <span className="text-base font-black text-slate-900 block">
                         ₹{product.mrp.toFixed(2)}
                       </span>
@@ -767,6 +932,239 @@ export default function SalesmanOrderTakingPage() {
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit SKU Modal (Salesman field price & box change) */}
+      {editingProduct && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 block">
+                  Cloud SKU Master
+                </span>
+                <h3 className="text-base font-black text-slate-900">Edit Product / MRP</h3>
+              </div>
+              <button
+                onClick={() => setEditingProduct(null)}
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProductEdit} className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Product Name
+                </label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Pack Size
+                  </label>
+                  <input
+                    type="text"
+                    value={editPackSize}
+                    onChange={(e) => setEditPackSize(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500"
+                    placeholder="e.g. 100g, 500ml"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    MRP Price (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editMrp}
+                    onChange={(e) => setEditMrp(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 font-mono"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  1 Full Box Packaging (Pcs per Box / Peti)
+                </label>
+                <input
+                  type="number"
+                  value={editUnitsPerBox}
+                  onChange={(e) => setEditUnitsPerBox(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 font-mono"
+                  required
+                />
+              </div>
+
+              <div className="p-2 rounded-xl bg-emerald-50 text-[11px] text-emerald-800 font-bold border border-emerald-200/80">
+                ⚡ Any update made here automatically syncs to the Owner profile & all devices in real-time.
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingProduct(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-black text-xs hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white font-black text-xs hover:bg-emerald-700 shadow-md shadow-emerald-700/20"
+                >
+                  Save & Sync
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add SKU Modal (Salesman add missing SKU from field) */}
+      {isAddSkuModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 my-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 block">
+                  New Product
+                </span>
+                <h3 className="text-base font-black text-slate-900">Add SKU to Catalog</h3>
+              </div>
+              <button
+                onClick={() => setIsAddSkuModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddSkuSubmit} className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Company / Brand</label>
+                <select
+                  value={newCompanyId}
+                  onChange={(e) => setNewCompanyId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500"
+                >
+                  {INITIAL_COMPANIES.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Product Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Dabur Red Toothpaste"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Pack Size</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 100g, 200ml"
+                    value={newPackSize}
+                    onChange={(e) => setNewPackSize(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Category</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Oral Care, Soaps"
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">MRP Price (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="50"
+                    value={newMrp}
+                    onChange={(e) => setNewMrp(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 font-mono"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Box Pack (Pcs)</label>
+                  <input
+                    type="number"
+                    placeholder="24"
+                    value={newUnitsPerBox}
+                    onChange={(e) => setNewUnitsPerBox(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 font-mono"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  WDMS Item Code (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Auto-generated if empty"
+                  value={newWdmsCode}
+                  onChange={(e) => setNewWdmsCode(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 font-mono"
+                />
+              </div>
+
+              <div className="p-2 rounded-xl bg-emerald-50 text-[11px] text-emerald-800 font-bold border border-emerald-200/80">
+                ✓ Adding this SKU will make it available to take orders immediately and reflect on the Owner profile.
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddSkuModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-black text-xs hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white font-black text-xs hover:bg-emerald-700 shadow-md shadow-emerald-700/20"
+                >
+                  Add SKU
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
