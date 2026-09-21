@@ -365,9 +365,25 @@ export const saveCloudDukansBatch = async (incomingDukans: Dukan[]): Promise<boo
       if (!d || !d.shopName || deletedIds.includes(d.id)) continue;
       const cleanName = d.shopName.trim().toLowerCase().replace(/\s+/g, ' ');
       const normKey = `${d.tripId || ''}::${cleanName}`;
-      const existing = map.get(normKey);
-      if (existing) {
-        const preferredId = d.id?.startsWith('duk-custom-') ? d.id : existing.id;
+
+      let existingKey: string | undefined;
+      if (map.has(normKey)) {
+        existingKey = normKey;
+      } else if (d.id) {
+        for (const [k, v] of Array.from(map.entries())) {
+          if (v.id === d.id) {
+            existingKey = k;
+            break;
+          }
+        }
+      }
+
+      const existing = existingKey ? map.get(existingKey) : undefined;
+      if (existing && existingKey) {
+        if (existingKey !== normKey) {
+          map.delete(existingKey);
+        }
+        const preferredId = d.id?.startsWith('duk-custom-') ? d.id : (d.id || existing.id);
         map.set(normKey, { ...existing, ...d, id: preferredId });
       } else {
         map.set(normKey, d);
@@ -540,10 +556,26 @@ export const saveCloudProductsBatch = async (incomingProducts: Product[]): Promi
       const cleanPack = (p.packSize || '').trim().toLowerCase();
 
       const normKey = cleanWdms ? `wdms::${cleanWdms}` : `comp::${cleanCompany}::${cleanName}::${cleanPack}`;
-      const existing = map.get(normKey) || (p.id ? Array.from(map.values()).find((x) => x.id === p.id) : undefined);
 
-      if (existing) {
-        const preferredId = p.id?.startsWith('prod-custom-') ? p.id : existing.id;
+      let existingKey: string | undefined;
+      if (map.has(normKey)) {
+        existingKey = normKey;
+      } else if (p.id) {
+        for (const [k, v] of Array.from(map.entries())) {
+          if (v.id === p.id) {
+            existingKey = k;
+            break;
+          }
+        }
+      }
+
+      const existing = existingKey ? map.get(existingKey) : undefined;
+
+      if (existing && existingKey) {
+        if (existingKey !== normKey) {
+          map.delete(existingKey);
+        }
+        const preferredId = p.id?.startsWith('prod-custom-') ? p.id : (p.id || existing.id);
         map.set(normKey, { ...existing, ...p, id: preferredId });
       } else {
         map.set(normKey, p);

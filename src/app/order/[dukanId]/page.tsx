@@ -105,11 +105,37 @@ export default function SalesmanOrderTakingPage() {
     const loadedProducts = getStoredProducts();
     setProducts(loadedProducts);
 
+    const applyFreshProducts = (fresh: Product[]) => {
+      if (!fresh || fresh.length === 0) return;
+      setProducts(fresh);
+      setCartItems((prevCart) =>
+        prevCart.map((item) => {
+          const updatedProd = fresh.find((p) => p.id === item.product.id);
+          if (
+            updatedProd &&
+            (updatedProd.mrp !== item.product.mrp ||
+              updatedProd.unitsPerBox !== item.product.unitsPerBox ||
+              updatedProd.name !== item.product.name ||
+              updatedProd.packSize !== item.product.packSize)
+          ) {
+            const totalUnits = item.boxQty * updatedProd.unitsPerBox + item.looseQty;
+            return {
+              ...item,
+              product: updatedProd,
+              totalUnits,
+              lineMrpTotal: totalUnits * updatedProd.mrp,
+            };
+          }
+          return item;
+        })
+      );
+    };
+
     // Fetch latest products from Cloud
     const refreshProducts = () => {
       syncProductsWithBackend().then((fresh) => {
         if (fresh && fresh.length > 0) {
-          setProducts(fresh);
+          applyFreshProducts(fresh);
         }
       });
     };
@@ -119,7 +145,7 @@ export default function SalesmanOrderTakingPage() {
 
     const handleProductsSynced = (e: any) => {
       if (e.detail && Array.isArray(e.detail)) {
-        setProducts(e.detail);
+        applyFreshProducts(e.detail);
       }
     };
     window.addEventListener('rushabh-products-synced', handleProductsSynced);

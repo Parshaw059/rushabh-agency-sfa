@@ -137,11 +137,26 @@ export const deduplicateDukans = (dukans: Dukan[]): Dukan[] => {
     const normKey = `${d.tripId || ''}::${cleanName}`;
 
     // Find if already exists by normKey or by ID
-    const existing = map.get(normKey) || (d.id ? Array.from(map.values()).find((x) => x.id === d.id) : undefined);
+    let existingKey: string | undefined;
+    if (map.has(normKey)) {
+      existingKey = normKey;
+    } else if (d.id) {
+      for (const [k, v] of Array.from(map.entries())) {
+        if (v.id === d.id) {
+          existingKey = k;
+          break;
+        }
+      }
+    }
 
-    if (existing) {
-      // Merge: prefer custom ID (duk-custom-) if present, prefer non-zero phone, prefer actual owner name
-      const preferredId = d.id?.startsWith('duk-custom-') ? d.id : existing.id;
+    const existing = existingKey ? map.get(existingKey) : undefined;
+
+    if (existing && existingKey) {
+      // If shopName changed, delete the old key so it does not leave duplicate
+      if (existingKey !== normKey) {
+        map.delete(existingKey);
+      }
+      const preferredId = d.id?.startsWith('duk-custom-') ? d.id : (d.id || existing.id);
       const merged: Dukan = {
         ...existing,
         ...d,
@@ -385,10 +400,28 @@ export const deduplicateProducts = (products: Product[]): Product[] => {
     const cleanPack = (p.packSize || '').trim().toLowerCase();
 
     const normKey = cleanWdms ? `wdms::${cleanWdms}` : `comp::${cleanCompany}::${cleanName}::${cleanPack}`;
-    const existing = map.get(normKey) || (p.id ? Array.from(map.values()).find((x) => x.id === p.id) : undefined);
 
-    if (existing) {
-      const preferredId = p.id?.startsWith('prod-custom-') ? p.id : existing.id;
+    // Find if already exists by normKey or by ID
+    let existingKey: string | undefined;
+    if (map.has(normKey)) {
+      existingKey = normKey;
+    } else if (p.id) {
+      for (const [k, v] of Array.from(map.entries())) {
+        if (v.id === p.id) {
+          existingKey = k;
+          break;
+        }
+      }
+    }
+
+    const existing = existingKey ? map.get(existingKey) : undefined;
+
+    if (existing && existingKey) {
+      // If name or packSize changed, delete the old key so it does not leave duplicate
+      if (existingKey !== normKey) {
+        map.delete(existingKey);
+      }
+      const preferredId = p.id?.startsWith('prod-custom-') ? p.id : (p.id || existing.id);
       map.set(normKey, {
         ...existing,
         ...p,
@@ -877,12 +910,24 @@ export const syncDukansWithBackend = async (): Promise<Dukan[]> => {
       // 1. Filter out deleted
       const cleanLocal = localDukans.filter((d) => !deletedIds.has(d.id));
 
-      // 2. Merge: INITIAL_DUKANS + cloudDukans + cleanLocal with ZERO DUPLICATES!
-      const combined = [...INITIAL_DUKANS, ...cloudDukans, ...cleanLocal].filter(
+      // 2. Merge: INITIAL_DUKANS + cleanLocal + cloudDukans with ZERO DUPLICATES!
+      // cloudDukans is placed LAST so any updates from cloud override stale local cache
+      const combined = [...INITIAL_DUKANS, ...cleanLocal, ...cloudDukans].filter(
         (d) => !deletedIds.has(d.id) && !(d.tripId === 'trip-dashrath-ranoli' && d.id.startsWith('duk-dsr-'))
       );
       const merged = deduplicateDukans(combined);
       saveDukans(merged);
+
+      // Auto-upload any local custom dukans not yet in cloud
+      const cloudIds = new Set(cloudDukans.map((d) => d.id));
+      const unSyncedCustom = cleanLocal.filter((d) => d.id?.startsWith('duk-custom-') && !cloudIds.has(d.id));
+      if (unSyncedCustom.length > 0) {
+        fetch('/api/dukans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dukans: unSyncedCustom }),
+        }).catch(() => {});
+      }
 
       // 3. Update trip retailer counts across all beats
       const trips = getStoredTrips();
@@ -959,12 +1004,24 @@ export const syncProductsWithBackend = async (): Promise<Product[]> => {
       // 1. Filter out deleted
       const cleanLocal = localProducts.filter((p) => !deletedIds.has(p.id));
 
-      // 2. Merge: INITIAL_PRODUCTS + cloudProducts + cleanLocal with ZERO DUPLICATES!
-      const combined = [...INITIAL_PRODUCTS, ...cloudProducts, ...cleanLocal].filter(
+      // 2. Merge: INITIAL_PRODUCTS + cleanLocal + cloudProducts with ZERO DUPLICATES!
+      // cloudProducts is placed LAST so any updates from cloud (MRP, packaging, details) override stale local cache
+      const combined = [...INITIAL_PRODUCTS, ...cleanLocal, ...cloudProducts].filter(
         (p) => !deletedIds.has(p.id)
       );
       const merged = deduplicateProducts(combined);
       saveProducts(merged);
+
+      // Auto-upload any local custom products not yet in cloud
+      const cloudIds = new Set(cloudProducts.map((p) => p.id));
+      const unSyncedCustom = cleanLocal.filter((p) => p.isCustom && !cloudIds.has(p.id));
+      if (unSyncedCustom.length > 0) {
+        fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ products: unSyncedCustom }),
+        }).catch(() => {});
+      }
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('rushabh-products-synced', { detail: merged }));
