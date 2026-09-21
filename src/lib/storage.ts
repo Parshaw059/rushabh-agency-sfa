@@ -113,7 +113,7 @@ export const getStoredTrips = (): Trip[] => {
     const actualCount = allDukans.filter((d) => d.tripId === t.id).length;
     return {
       ...t,
-      dukanCount: Math.max(t.dukanCount || 0, actualCount),
+      dukanCount: actualCount,
     };
   });
 };
@@ -130,6 +130,9 @@ export const deduplicateDukans = (dukans: Dukan[]): Dukan[] => {
 
   for (const d of dukans) {
     if (!d || !d.shopName) continue;
+    // Strictly filter out any obsolete dummy placeholder shops in Dashrath-Ranoli
+    if (d.tripId === 'trip-dashrath-ranoli' && d.id && d.id.startsWith('duk-dsr-')) continue;
+
     const cleanName = d.shopName.trim().toLowerCase().replace(/\s+/g, ' ');
     const normKey = `${d.tripId || ''}::${cleanName}`;
 
@@ -174,7 +177,9 @@ export const getStoredDukans = (): Dukan[] => {
     }
 
     // Merge INITIAL_DUKANS with locally stored custom dukans with ZERO duplicates
-    const combined = [...INITIAL_DUKANS, ...stored];
+    const combined = [...INITIAL_DUKANS, ...stored].filter(
+      (d) => !(d.tripId === 'trip-dashrath-ranoli' && d.id && d.id.startsWith('duk-dsr-'))
+    );
     return deduplicateDukans(combined);
   } catch (e) {
     return INITIAL_DUKANS;
@@ -873,19 +878,17 @@ export const syncDukansWithBackend = async (): Promise<Dukan[]> => {
       const cleanLocal = localDukans.filter((d) => !deletedIds.has(d.id));
 
       // 2. Merge: INITIAL_DUKANS + cloudDukans + cleanLocal with ZERO DUPLICATES!
-
-      // 3. Merge: INITIAL_DUKANS + cloudDukans + cleanLocal with ZERO DUPLICATES!
       const combined = [...INITIAL_DUKANS, ...cloudDukans, ...cleanLocal].filter(
-        (d) => !deletedIds.has(d.id)
+        (d) => !deletedIds.has(d.id) && !(d.tripId === 'trip-dashrath-ranoli' && d.id.startsWith('duk-dsr-'))
       );
       const merged = deduplicateDukans(combined);
       saveDukans(merged);
 
-      // 4. Update trip retailer counts across all beats
+      // 3. Update trip retailer counts across all beats
       const trips = getStoredTrips();
       const updatedTrips = trips.map((t) => {
         const count = merged.filter((d) => d.tripId === t.id).length;
-        return { ...t, dukanCount: Math.max(t.dukanCount || 0, count) };
+        return { ...t, dukanCount: count };
       });
       saveTrips(updatedTrips);
 

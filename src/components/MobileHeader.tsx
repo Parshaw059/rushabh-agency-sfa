@@ -36,11 +36,13 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
       await forcePushAllLocalDukansToCloud().catch(() => {});
       await forcePushAllLocalProductsToCloud().catch(() => {});
       const res = await syncAllWithBackend();
-      const dukansCount = res.dukans?.length || 0;
+      const allDukans = res.dukans || [];
+      const dsrCount = allDukans.filter((d) => d.tripId === 'trip-dashrath-ranoli').length;
+      const dukansCount = allDukans.length;
       const productsCount = res.products?.length || 0;
       const ordersCount = res.orders?.length || 0;
       setSyncToast({
-        message: `✅ Cloud Synced! ${dukansCount} Retailers, ${productsCount} SKUs & ${ordersCount} Orders Active`,
+        message: `✅ Cloud Synced! ${dsrCount} Dashrath-Ranoli Retailers (${dukansCount} Total across Beats), ${productsCount} SKUs & ${ordersCount} Orders`,
         type: 'success',
       });
     } catch (e: any) {
