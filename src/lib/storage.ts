@@ -324,6 +324,50 @@ export const deleteDukan = (dukanId: string): void => {
   }
 };
 
+// Feature: Edit / Update Existing Retailer Details
+export const updateDukan = (
+  dukanId: string,
+  updatedFields: {
+    shopName: string;
+    ownerName: string;
+    phone: string;
+    address: string;
+    gstNumber?: string;
+  }
+): Dukan | null => {
+  const dukans = getStoredDukans();
+  const index = dukans.findIndex((d) => d.id === dukanId);
+  if (index === -1) return null;
+
+  const current = dukans[index];
+  const updatedDukan: Dukan = {
+    ...current,
+    shopName: updatedFields.shopName.trim(),
+    ownerName: updatedFields.ownerName.trim(),
+    phone: updatedFields.phone.trim(),
+    address: updatedFields.address.trim(),
+    gstNumber: updatedFields.gstNumber?.trim() || undefined,
+  };
+
+  dukans[index] = updatedDukan;
+  saveDukans(dukans);
+
+  // Sync updated dukan to Cloud Store immediately
+  if (isBrowser && navigator.onLine) {
+    fetch('/api/dukans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dukan: updatedDukan }),
+    }).catch((e) => console.warn('[Storage] Failed to sync updated dukan to cloud:', e));
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('rushabh-dukans-synced', { detail: dukans }));
+  }
+
+  return updatedDukan;
+};
+
 // PRODUCTS (CRUD FOR OWNER)
 export const getStoredProducts = (): Product[] => {
   if (!isBrowser) return INITIAL_PRODUCTS;

@@ -14,6 +14,7 @@ import {
   syncAllWithBackend,
   deleteOrder,
   addDukan,
+  updateDukan,
   deleteDukan,
 } from '@/lib/storage';
 import { MobileHeader } from '@/components/MobileHeader';
@@ -30,6 +31,7 @@ import {
   Search,
   UserPlus,
   Trash2,
+  Pencil,
   X,
   AlertTriangle,
   PhoneCall,
@@ -61,6 +63,15 @@ export default function TripDukansPage() {
   const [newAddress, setNewAddress] = useState('');
   const [newGst, setNewGst] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
+
+  // Edit Dukan Modal State
+  const [dukanToEdit, setDukanToEdit] = useState<Dukan | null>(null);
+  const [editShopName, setEditShopName] = useState('');
+  const [editOwnerName, setEditOwnerName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editGst, setEditGst] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
 
   // Delete Dukan State
   const [dukanToDelete, setDukanToDelete] = useState<Dukan | null>(null);
@@ -197,6 +208,43 @@ export default function TripDukansPage() {
     refreshDukans(trip.id);
 
     setNotification(`New Retailer "${created.shopName}" added to ${trip.name}!`);
+    setTimeout(() => setNotification(null), 4000);
+  };
+
+  const handleOpenEditDukan = (d: Dukan) => {
+    setDukanToEdit(d);
+    setEditShopName(d.shopName);
+    setEditOwnerName(d.ownerName || '');
+    setEditPhone(d.phone || '');
+    setEditAddress(d.address || '');
+    setEditGst(d.gstNumber || '');
+    setEditError(null);
+  };
+
+  const handleSaveEditDukan = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dukanToEdit) return;
+
+    if (!editShopName.trim()) {
+      setEditError('Please enter Shop / Retailer Name');
+      return;
+    }
+    if (!editPhone.trim() || editPhone.trim().length < 10) {
+      setEditError('Please enter a valid 10-digit mobile number');
+      return;
+    }
+
+    updateDukan(dukanToEdit.id, {
+      shopName: editShopName.trim(),
+      ownerName: editOwnerName.trim() || 'N/A',
+      phone: editPhone.trim(),
+      address: editAddress.trim() || trip?.area || '',
+      gstNumber: editGst.trim() || undefined,
+    });
+
+    setDukanToEdit(null);
+    if (trip) refreshDukans(trip.id);
+    setNotification(`Retailer "${editShopName}" updated successfully!`);
     setTimeout(() => setNotification(null), 4000);
   };
 
@@ -448,6 +496,15 @@ export default function TripDukansPage() {
                           </span>
                         )}
 
+                        {/* Edit retailer button */}
+                        <button
+                          onClick={() => handleOpenEditDukan(dukan)}
+                          className="p-1 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+                          title="Edit retailer details"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+
                         {/* Delete retailer button */}
                         <button
                           onClick={() => setDukanToDelete(dukan)}
@@ -679,6 +736,126 @@ export default function TripDukansPage() {
                   className="py-2.5 px-5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black shadow-md shadow-emerald-700/20 active:scale-[0.98]"
                 >
                   Save & Add to Beat
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT RETAILER DETAILS */}
+      {dukanToEdit && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end justify-center sm:items-center p-0 sm:p-4 animate-in fade-in">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[10px] font-black uppercase text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  {trip.name}
+                </span>
+                <h3 className="text-base font-black text-slate-900 mt-1 flex items-center gap-1.5">
+                  <Pencil className="w-4 h-4 text-emerald-600" />
+                  Edit Retailer Details
+                </h3>
+              </div>
+              <button
+                onClick={() => setDukanToEdit(null)}
+                className="p-1 rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-bold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>{editError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEditDukan} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[10px] font-black text-slate-600 uppercase mb-1">
+                  Dukan / Shop Name *
+                </label>
+                <input
+                  type="text"
+                  value={editShopName}
+                  onChange={(e) => setEditShopName(e.target.value)}
+                  placeholder="e.g. Mahadev Provision & General Store"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-600 uppercase mb-1">
+                  Proprietor / Owner Name *
+                </label>
+                <input
+                  type="text"
+                  value={editOwnerName}
+                  onChange={(e) => setEditOwnerName(e.target.value)}
+                  placeholder="e.g. Rameshbhai Patel"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-600 uppercase mb-1">
+                  Mobile Number (Calling & WhatsApp) *
+                </label>
+                <input
+                  type="tel"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  placeholder="e.g. 9825098765"
+                  maxLength={10}
+                  className="w-full p-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-600 uppercase mb-1">
+                  Address / Landmark in {trip.area} *
+                </label>
+                <textarea
+                  value={editAddress}
+                  onChange={(e) => setEditAddress(e.target.value)}
+                  placeholder="e.g. Near Bus Stand, Main Market Road"
+                  rows={2}
+                  className="w-full p-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-600 uppercase mb-1">
+                  GST Number (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={editGst}
+                  onChange={(e) => setEditGst(e.target.value.toUpperCase())}
+                  placeholder="e.g. 24AAAAA0000A1Z5"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDukanToEdit(null)}
+                  className="py-2.5 px-4 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="py-2.5 px-5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black shadow-md shadow-emerald-700/20 active:scale-[0.98]"
+                >
+                  Save Changes
                 </button>
               </div>
             </form>
