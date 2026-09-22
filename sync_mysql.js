@@ -120,6 +120,36 @@ async function syncOnce() {
       }
       console.log(`[${new Date().toLocaleTimeString()}] ✅ Synced ${insertedCount} orders from cloud to local MySQL.`);
     }
+
+    // 2. Fetch companies from cloud
+    try {
+      const compRes = await fetchCloudJson('/api/companies');
+      if (compRes.success && Array.isArray(compRes.companies)) {
+        for (const comp of compRes.companies) {
+          await connection.query(
+            `INSERT INTO companies (id, name, code, description, tagline, badge_color, gradient)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               name = VALUES(name),
+               code = VALUES(code),
+               description = VALUES(description),
+               tagline = VALUES(tagline)`,
+            [
+              comp.id,
+              comp.name,
+              comp.code,
+              comp.description || '',
+              comp.tagline || '',
+              comp.badgeColor || 'bg-slate-700',
+              comp.gradient || 'from-slate-700 to-slate-900',
+            ]
+          );
+        }
+      }
+    } catch (e) {
+      // Companies sync is non-blocking
+    }
+
   } catch (err) {
     console.error(`[${new Date().toLocaleTimeString()}] ❌ Sync error:`, err.message);
   } finally {

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { Dukan, Product, CartItem, User, Order } from '@/types';
+import { Dukan, Product, CartItem, User, Order, Company } from '@/types';
 import { INITIAL_COMPANIES } from '@/data/mockData';
 import {
   getCurrentUser,
@@ -15,6 +15,10 @@ import {
   syncProductsWithBackend,
   addProduct,
   updateProduct,
+  getStoredCompanies,
+  addCompany,
+  syncCompaniesWithBackend,
+  COMPANY_COLOR_PRESETS,
 } from '@/lib/storage';
 import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp } from '@/utils/generatePdfReceipt';
 import { MobileHeader } from '@/components/MobileHeader';
@@ -77,6 +81,15 @@ export default function SalesmanOrderTakingPage() {
   const [editName, setEditName] = useState('');
   const [editPackSize, setEditPackSize] = useState('');
 
+  const [companies, setCompanies] = useState<Company[]>([]);
+
+  // Add Company modal state
+  const [isAddCompanyModalOpen, setIsAddCompanyModalOpen] = useState(false);
+  const [newCompanyName, setNewCompanyName] = useState('');
+  const [newCompanyCode, setNewCompanyCode] = useState('');
+  const [newCompanyTagline, setNewCompanyTagline] = useState('');
+  const [newCompanyColorIdx, setNewCompanyColorIdx] = useState(0);
+
   // Add SKU modal state (Salesman can add missing SKU from the field)
   const [isAddSkuModalOpen, setIsAddSkuModalOpen] = useState(false);
   const [newCompanyId, setNewCompanyId] = useState('dabur');
@@ -104,6 +117,7 @@ export default function SalesmanOrderTakingPage() {
     setDukan(loadedDukan);
     const loadedProducts = getStoredProducts();
     setProducts(loadedProducts);
+    setCompanies(getStoredCompanies());
 
     const applyFreshProducts = (fresh: Product[]) => {
       if (!fresh || fresh.length === 0) return;
@@ -131,25 +145,37 @@ export default function SalesmanOrderTakingPage() {
       );
     };
 
-    // Fetch latest products from Cloud
-    const refreshProducts = () => {
+    // Fetch latest products & companies from Cloud
+    const refreshData = () => {
       syncProductsWithBackend().then((fresh) => {
         if (fresh && fresh.length > 0) {
           applyFreshProducts(fresh);
         }
       });
+      syncCompaniesWithBackend().then((freshComps) => {
+        if (freshComps && freshComps.length > 0) {
+          setCompanies(freshComps);
+        }
+      });
     };
 
-    refreshProducts();
-    const prodInterval = setInterval(refreshProducts, 4000);
+    refreshData();
+    const prodInterval = setInterval(refreshData, 4000);
 
     const handleProductsSynced = (e: any) => {
       if (e.detail && Array.isArray(e.detail)) {
         applyFreshProducts(e.detail);
       }
     };
+    const handleCompaniesSynced = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setCompanies(e.detail);
+      }
+    };
+
     window.addEventListener('rushabh-products-synced', handleProductsSynced);
-    window.addEventListener('focus', refreshProducts);
+    window.addEventListener('rushabh-companies-synced', handleCompaniesSynced);
+    window.addEventListener('focus', refreshData);
 
     // Check if a bill was ALREADY booked today for this retailer
     const checkOrder = () => {
@@ -195,7 +221,8 @@ export default function SalesmanOrderTakingPage() {
     return () => {
       clearInterval(prodInterval);
       window.removeEventListener('rushabh-products-synced', handleProductsSynced);
-      window.removeEventListener('focus', refreshProducts);
+      window.removeEventListener('rushabh-companies-synced', handleCompaniesSynced);
+      window.removeEventListener('focus', refreshData);
     };
   }, [dukanId, router]);
 
@@ -254,12 +281,37 @@ export default function SalesmanOrderTakingPage() {
     setTimeout(() => setSkuNotification(null), 4000);
   };
 
+  // Add Company Submit
+  const handleAddCompanySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCompanyName.trim()) return;
+
+    const preset = COMPANY_COLOR_PRESETS[newCompanyColorIdx] || COMPANY_COLOR_PRESETS[0];
+    const created = addCompany({
+      name: newCompanyName.trim(),
+      code: newCompanyCode.trim() || undefined,
+      tagline: newCompanyTagline.trim() || undefined,
+      badgeColor: preset.badgeColor,
+      gradient: preset.gradient,
+    });
+
+    setCompanies(getStoredCompanies());
+    setIsAddCompanyModalOpen(false);
+    setSelectedCompanyId(created.id);
+    setNewCompanyId(created.id);
+    setNewCompanyName('');
+    setNewCompanyCode('');
+    setNewCompanyTagline('');
+    setSkuNotification(`Added brand "${created.name}"! You can now book or add products for this brand.`);
+    setTimeout(() => setSkuNotification(null), 4000);
+  };
+
   // Add SKU Submit (syncs to Cloud & Owner profile immediately)
   const handleAddSkuSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
 
-    const comp = INITIAL_COMPANIES.find((c) => c.id === newCompanyId) || INITIAL_COMPANIES[0];
+    const comp = companies.find((c) => c.id === newCompanyId) || companies[0] || INITIAL_COMPANIES[0];
     const created = addProduct({
       companyId: comp.id,
       companyName: comp.name,
@@ -372,8 +424,8 @@ export default function SalesmanOrderTakingPage() {
 
   // Active Company
   const activeCompany = useMemo(() => {
-    return INITIAL_COMPANIES.find((c) => c.id === selectedCompanyId) || INITIAL_COMPANIES[0];
-  }, [selectedCompanyId]);
+    return companies.find((c) => c.id === selectedCompanyId) || companies[0] || INITIAL_COMPANIES[0];
+  }, [companies, selectedCompanyId]);
 
   // Products filtered by selected company & search query
   const displayedProducts = useMemo(() => {
@@ -455,19 +507,19 @@ export default function SalesmanOrderTakingPage() {
           </div>
         )}
 
-        {/* 16 FMCG Company Selector Bar */}
+        {/* FMCG Company Selector Bar with + Add Comp at the last */}
         <div className="bg-white p-2.5 rounded-2xl border border-slate-200/90 shadow-xs space-y-2">
           <div className="flex items-center justify-between px-1">
             <span className="text-[11px] font-black text-slate-600 uppercase tracking-wider">
-              Select Company / Brand (16 Brands):
+              Select Company / Brand ({companies.length} Brands):
             </span>
             <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-bold border border-emerald-200/80">
-              {INITIAL_COMPANIES.length} Brands
+              {companies.length} Brands
             </span>
           </div>
 
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {INITIAL_COMPANIES.map((comp) => {
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none items-center">
+            {companies.map((comp) => {
               const isSelected = selectedCompanyId === comp.id;
               const inCartCount = cartItems
                 .filter((item) => item.product.companyId === comp.id)
@@ -496,6 +548,16 @@ export default function SalesmanOrderTakingPage() {
                 </button>
               );
             })}
+
+            {/* At the last of company selection: + Add Comp */}
+            <button
+              onClick={() => setIsAddCompanyModalOpen(true)}
+              className="flex-shrink-0 px-3 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 border border-dashed border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 shadow-2xs active:scale-95"
+              title="Add New FMCG Brand Agency"
+            >
+              <Plus className="w-3.5 h-3.5 text-purple-600" />
+              <span>+ Add Comp</span>
+            </button>
           </div>
         </div>
 
@@ -1095,15 +1157,28 @@ export default function SalesmanOrderTakingPage() {
 
             <form onSubmit={handleAddSkuSubmit} className="space-y-3">
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">Company / Brand</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700">Company / Brand</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddSkuModalOpen(false);
+                      setIsAddCompanyModalOpen(true);
+                    }}
+                    className="text-[10px] text-purple-700 font-bold hover:underline flex items-center gap-0.5"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>+ New Brand</span>
+                  </button>
+                </div>
                 <select
                   value={newCompanyId}
                   onChange={(e) => setNewCompanyId(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500"
                 >
-                  {INITIAL_COMPANIES.map((c) => (
+                  {companies.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name}
+                      {c.name} ({c.code})
                     </option>
                   ))}
                 </select>
@@ -1201,6 +1276,117 @@ export default function SalesmanOrderTakingPage() {
                   className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white font-black text-xs hover:bg-emerald-700 shadow-md shadow-emerald-700/20"
                 >
                   Add SKU
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Company / Brand Modal in Order Booking */}
+      {isAddCompanyModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 my-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-purple-700 block">
+                  NEW COMPANY / BRAND
+                </span>
+                <h3 className="text-base font-black text-slate-900">Add Brand Agency</h3>
+              </div>
+              <button
+                onClick={() => setIsAddCompanyModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddCompanySubmit} className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Company / Brand Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Britannia, Balaji Wafers"
+                  value={newCompanyName}
+                  onChange={(e) => {
+                    setNewCompanyName(e.target.value);
+                    if (!newCompanyCode) {
+                      setNewCompanyCode(e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase());
+                    }
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Short Code
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. BRIT"
+                    value={newCompanyCode}
+                    onChange={(e) => setNewCompanyCode(e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono font-bold uppercase focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Category
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Biscuits"
+                    value={newCompanyTagline}
+                    onChange={(e) => setNewCompanyTagline(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Color Theme
+                </label>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {COMPANY_COLOR_PRESETS.map((preset, idx) => (
+                    <button
+                      key={preset.name}
+                      type="button"
+                      onClick={() => setNewCompanyColorIdx(idx)}
+                      className={`p-1 rounded-lg border flex flex-col items-center gap-0.5 transition-all ${
+                        newCompanyColorIdx === idx
+                          ? 'border-purple-600 bg-purple-50 ring-2 ring-purple-300'
+                          : 'border-slate-200 bg-slate-50'
+                      }`}
+                    >
+                      <span className={`w-3.5 h-3.5 rounded-full ${preset.badgeColor}`} />
+                      <span className="text-[7px] font-bold text-slate-600 truncate max-w-full">
+                        {preset.name.split(' ')[0]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddCompanyModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-black text-xs hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black text-xs hover:from-purple-700 hover:to-indigo-700 shadow-md shadow-purple-700/20"
+                >
+                  Save Brand
                 </button>
               </div>
             </form>

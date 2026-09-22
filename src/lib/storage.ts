@@ -11,9 +11,11 @@ import {
 const USERS_KEY = 'rushabh_app_users_v4';
 const TRIPS_KEY = 'rushabh_app_trips_v4';
 const DUKANS_KEY = 'rushabh_app_dukans_v4';
+const COMPANIES_KEY = 'rushabh_app_companies_v4';
 const PRODUCTS_KEY = 'rushabh_app_products_v4';
 const ORDERS_KEY = 'rushabh_app_orders_v4';
 const LOCAL_DELETED_ORDERS_KEY = 'rushabh_deleted_order_ids_v1';
+const LOCAL_DELETED_COMPANIES_KEY = 'rushabh_deleted_company_ids_v1';
 const CURRENT_USER_KEY = 'rushabh_app_current_user_v4';
 
 const isBrowser = typeof window !== 'undefined';
@@ -421,6 +423,244 @@ export const updateDukan = (
   }
 
   return updatedDukan;
+};
+
+// ==============================================================
+// COMPANIES / BRANDS (CRUD & SYNC)
+// ==============================================================
+
+export const COMPANY_COLOR_PRESETS = [
+  { name: 'Emerald / Green', badgeColor: 'bg-emerald-600', gradient: 'from-emerald-600 to-teal-800' },
+  { name: 'Royal Blue', badgeColor: 'bg-blue-600', gradient: 'from-blue-600 to-indigo-800' },
+  { name: 'Crimson Red', badgeColor: 'bg-red-600', gradient: 'from-red-600 to-amber-700' },
+  { name: 'Golden Amber', badgeColor: 'bg-amber-600', gradient: 'from-amber-600 to-orange-700' },
+  { name: 'Deep Purple', badgeColor: 'bg-purple-600', gradient: 'from-purple-600 to-violet-800' },
+  { name: 'Teal & Cyan', badgeColor: 'bg-teal-600', gradient: 'from-teal-600 to-emerald-800' },
+  { name: 'Rose & Pink', badgeColor: 'bg-rose-600', gradient: 'from-rose-600 to-pink-800' },
+  { name: 'Indigo / Navy', badgeColor: 'bg-indigo-600', gradient: 'from-indigo-600 to-blue-900' },
+  { name: 'Warm Orange', badgeColor: 'bg-orange-600', gradient: 'from-orange-600 to-amber-700' },
+  { name: 'Sky Blue', badgeColor: 'bg-sky-600', gradient: 'from-sky-600 to-blue-800' },
+];
+
+export const getLocalDeletedCompanyIds = (): string[] => {
+  if (!isBrowser) return [];
+  try {
+    const data = localStorage.getItem(LOCAL_DELETED_COMPANIES_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+export const addLocalDeletedCompanyIds = (ids: string[]): void => {
+  if (!isBrowser) return;
+  try {
+    const existing = getLocalDeletedCompanyIds();
+    const updated = Array.from(new Set([...existing, ...ids.filter(Boolean)]));
+    localStorage.setItem(LOCAL_DELETED_COMPANIES_KEY, JSON.stringify(updated));
+  } catch (e) {}
+};
+
+export const deduplicateCompanies = (companies: Company[]): Company[] => {
+  const map = new Map<string, Company>();
+
+  for (const c of companies) {
+    if (!c || !c.name) continue;
+    const cleanName = c.name.trim().toLowerCase().replace(/\s+/g, ' ');
+    const normKey = c.id || cleanName;
+
+    let existingKey: string | undefined;
+    if (map.has(normKey)) {
+      existingKey = normKey;
+    } else {
+      for (const [k, v] of Array.from(map.entries())) {
+        if (v.name.trim().toLowerCase().replace(/\s+/g, ' ') === cleanName) {
+          existingKey = k;
+          break;
+        }
+      }
+    }
+
+    const existing = existingKey ? map.get(existingKey) : undefined;
+    if (existing && existingKey) {
+      const cTime = c.updatedAt ? new Date(c.updatedAt).getTime() : 0;
+      const existingTime = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+      const isNewer = cTime >= existingTime;
+      const winner = isNewer ? c : existing;
+      const loser = isNewer ? existing : c;
+
+      map.set(existingKey, {
+        ...loser,
+        ...winner,
+        id: existing.id || c.id,
+        code: winner.code || loser.code,
+        description: winner.description || loser.description,
+        tagline: winner.tagline || loser.tagline,
+        badgeColor: winner.badgeColor || loser.badgeColor,
+        gradient: winner.gradient || loser.gradient,
+        updatedAt: isNewer ? (c.updatedAt || existing.updatedAt) : (existing.updatedAt || c.updatedAt),
+      });
+    } else {
+      map.set(normKey, c);
+    }
+  }
+
+  return Array.from(map.values());
+};
+
+export const getStoredCompanies = (): Company[] => {
+  if (!isBrowser) return INITIAL_COMPANIES;
+  const deleted = new Set(getLocalDeletedCompanyIds());
+  const data = localStorage.getItem(COMPANIES_KEY);
+  if (!data) {
+    const cleanInitial = deduplicateCompanies(INITIAL_COMPANIES).filter((c) => !deleted.has(c.id));
+    localStorage.setItem(COMPANIES_KEY, JSON.stringify(cleanInitial));
+    return cleanInitial;
+  }
+  try {
+    const stored: Company[] = JSON.parse(data);
+    if (!Array.isArray(stored)) {
+      const cleanInitial = deduplicateCompanies(INITIAL_COMPANIES).filter((c) => !deleted.has(c.id));
+      localStorage.setItem(COMPANIES_KEY, JSON.stringify(cleanInitial));
+      return cleanInitial;
+    }
+    const combined = [...INITIAL_COMPANIES, ...stored].filter((c) => !deleted.has(c.id));
+    return deduplicateCompanies(combined);
+  } catch (e) {
+    return INITIAL_COMPANIES;
+  }
+};
+
+export const saveCompanies = (companies: Company[]): void => {
+  if (isBrowser) {
+    localStorage.setItem(COMPANIES_KEY, JSON.stringify(deduplicateCompanies(companies)));
+  }
+};
+
+export const addCompany = (newComp: {
+  name: string;
+  code?: string;
+  description?: string;
+  tagline?: string;
+  badgeColor?: string;
+  gradient?: string;
+}): Company => {
+  const companies = getStoredCompanies();
+  const cleanName = newComp.name.trim();
+  const slug = cleanName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  const id = `comp-${slug || Date.now()}`;
+  const code = (newComp.code?.trim() || cleanName.slice(0, 4).toUpperCase()).replace(/\s+/g, '');
+  
+  // Choose color preset or pick next available
+  const presetIdx = companies.length % COMPANY_COLOR_PRESETS.length;
+  const defaultPreset = COMPANY_COLOR_PRESETS[presetIdx];
+  const badgeColor = newComp.badgeColor || defaultPreset.badgeColor;
+  const gradient = newComp.gradient || defaultPreset.gradient;
+
+  const now = new Date().toISOString();
+  const created: Company = {
+    id,
+    name: cleanName,
+    code,
+    description: newComp.description?.trim() || `${cleanName} FMCG Range`,
+    tagline: newComp.tagline?.trim() || 'Authorized Brand Distribution',
+    badgeColor,
+    gradient,
+    createdAt: now,
+    updatedAt: now,
+    isCustom: true,
+  };
+
+  companies.push(created);
+  const deduplicated = deduplicateCompanies(companies);
+  saveCompanies(deduplicated);
+
+  // Sync to Cloud Store immediately
+  if (isBrowser && navigator.onLine) {
+    fetch('/api/companies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company: created }),
+    }).catch((e) => console.warn('[Storage] Failed to sync new company to cloud:', e));
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('rushabh-companies-synced', { detail: deduplicated }));
+  }
+
+  return created;
+};
+
+export const deleteCompany = (companyId: string): Company[] => {
+  const companies = getStoredCompanies();
+  addLocalDeletedCompanyIds([companyId]);
+  const filtered = companies.filter((c) => c.id !== companyId);
+  saveCompanies(filtered);
+
+  if (isBrowser && navigator.onLine) {
+    fetch(`/api/companies?id=${companyId}`, {
+      method: 'DELETE',
+    }).catch((e) => console.warn('[Storage] Failed to delete company in cloud:', e));
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('rushabh-companies-synced', { detail: filtered }));
+  }
+
+  return filtered;
+};
+
+export const syncCompaniesWithBackend = async (): Promise<Company[]> => {
+  if (!isBrowser) return INITIAL_COMPANIES;
+
+  try {
+    const res = await fetch('/api/companies', {
+      cache: 'no-store',
+      headers: { Pragma: 'no-cache', 'Cache-Control': 'no-cache' },
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const cloudCompanies: Company[] = Array.isArray(data.companies) ? data.companies : [];
+      const cloudDeleted: string[] = Array.isArray(data.deletedIds) ? data.deletedIds : [];
+      const localDeleted = getLocalDeletedCompanyIds();
+      const deletedIds = new Set([...cloudDeleted, ...localDeleted]);
+
+      const localCompanies = getStoredCompanies();
+      const cleanLocal = localCompanies.filter((c) => !deletedIds.has(c.id));
+
+      const combined = [...INITIAL_COMPANIES, ...cleanLocal, ...cloudCompanies].filter(
+        (c) => !deletedIds.has(c.id)
+      );
+      const merged = deduplicateCompanies(combined);
+      saveCompanies(merged);
+
+      // Push any newer local custom companies to cloud
+      const cloudIds = new Set(cloudCompanies.map((c) => c.id));
+      const localNewer = cleanLocal.filter((c) => c.isCustom && !cloudIds.has(c.id));
+      for (const comp of localNewer) {
+        fetch('/api/companies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ company: comp }),
+        }).catch(() => {});
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('rushabh-companies-synced', { detail: merged }));
+      }
+
+      return merged;
+    }
+  } catch (err) {
+    console.warn('[CloudCompanies] Error syncing companies:', err);
+  }
+
+  return getStoredCompanies();
 };
 
 // Helper: Deduplicate products strictly by WDMS code or companyId + name + packSize

@@ -1,4 +1,4 @@
-import { Order, OrderItemRecord, Dukan, Product } from '@/types';
+import { Order, OrderItemRecord, Dukan, Product, Company } from '@/types';
 import {
   getOrdersFromDb,
   insertOrderToDb,
@@ -7,6 +7,9 @@ import {
   getDukansFromDb,
   upsertDukanToDb,
   deleteDukanFromDb,
+  getCompaniesFromDb,
+  upsertCompanyToDb,
+  deleteCompanyFromDb,
 } from './mysql';
 
 // GitHub Cloud Store Configuration (Zero manual configuration needed from user)
@@ -664,4 +667,151 @@ export const deleteCloudProduct = async (productId: string): Promise<boolean> =>
     return false;
   }
 };
+
+// ==============================================================
+// COMPANIES / BRANDS (CROSS-DEVICE CLOUD STORE)
+// ==============================================================
+
+// Helper: Fetch companies and deleted company IDs from GitHub Gist
+const getCompaniesFromGist = async (): Promise<{ companies: Company[]; deletedIds: string[] }> => {
+  try {
+    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      headers: {
+        Authorization: `token ${GITHUB_TOKEN}`,
+        'User-Agent': 'Rushabh-Agency-SFA',
+        Accept: 'application/vnd.github.v3+json',
+      },
+      cache: 'no-store',
+    });
+
+    if (!res.ok) {
+      console.warn('[CloudDb] Gist fetch HTTP error (companies):', res.status);
+      return { companies: [], deletedIds: [] };
+    }
+
+    const data = await res.json();
+    const companiesContent = data.files?.['companies.json']?.content;
+    const deletedContent = data.files?.['deleted_company_ids.json']?.content;
+
+    let companies: Company[] = [];
+    if (companiesContent) {
+      try {
+        const parsed = JSON.parse(companiesContent);
+        if (Array.isArray(parsed)) companies = parsed;
+      } catch (e) {}
+    }
+
+    let deletedIds: string[] = [];
+    if (deletedContent) {
+      try {
+        const parsed = JSON.parse(deletedContent);
+        if (Array.isArray(parsed)) deletedIds = parsed;
+      } catch (e) {}
+    }
+
+    return { companies, deletedIds };
+  } catch (err) {
+    console.warn('[CloudDb] Gist read exception (companies):', err);
+    return { companies: [], deletedIds: [] };
+  }
+};
+
+// Helper: Save all companies and deleted IDs to GitHub Gist
+const saveCompaniesToGist = async (companies: Company[], deletedIds?: string[]): Promise<boolean> => {
+  try {
+    const filesPayload: any = {
+      'companies.json': {
+        content: JSON.stringify(companies, null, 2),
+      },
+    };
+
+    if (deletedIds !== undefined) {
+      filesPayload['deleted_company_ids.json'] = {
+        content: JSON.stringify(deletedIds, null, 2),
+      };
+    }
+
+    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `token ${GITHUB_TOKEN}`,
+        'User-Agent': 'Rushabh-Agency-SFA',
+        'Content-Type': 'application/json',
+        Accept: 'application/vnd.github.v3+json',
+      },
+      body: JSON.stringify({
+        files: filesPayload,
+      }),
+    });
+
+    return res.ok;
+  } catch (err) {
+    console.warn('[CloudDb] Gist write exception (companies):', err);
+    return false;
+  }
+};
+
+// Master Function: Get all companies across devices
+export const getCloudCompanies = async (): Promise<{ companies: Company[]; deletedIds: string[]; source: string }> => {
+  // 1. Try MySQL if configured
+  try {
+    const mysqlCompanies = await getCompaniesFromDb();
+    if (mysqlCompanies && mysqlCompanies.length > 0) {
+      return { companies: mysqlCompanies, deletedIds: [], source: 'mysql' };
+    }
+  } catch (e) {}
+
+  // 2. Read from GitHub Gist Cloud Store
+  const { companies, deletedIds } = await getCompaniesFromGist();
+  return { companies, deletedIds, source: 'cloud_gist' };
+};
+
+// Master Function: Save or update a single company
+export const saveCloudCompany = async (company: Company): Promise<boolean> => {
+  let savedMysql = false;
+  try {
+    savedMysql = await upsertCompanyToDb(company);
+  } catch (e) {}
+
+  try {
+    const { companies: currentCompanies, deletedIds } = await getCompaniesFromGist();
+    const cleanName = (company.name || '').trim().toLowerCase();
+    const existingIdx = currentCompanies.findIndex(
+      (c) => c.id === company.id || (c.name && c.name.trim().toLowerCase() === cleanName)
+    );
+
+    const now = company.updatedAt || new Date().toISOString();
+    const companyWithTime = { ...company, updatedAt: now };
+
+    if (existingIdx >= 0) {
+      currentCompanies[existingIdx] = { ...currentCompanies[existingIdx], ...companyWithTime };
+    } else {
+      currentCompanies.push(companyWithTime);
+    }
+
+    const updatedDeletedIds = deletedIds.filter((id) => id !== company.id);
+    const savedGist = await saveCompaniesToGist(currentCompanies, updatedDeletedIds);
+    return savedMysql || savedGist;
+  } catch (e) {
+    return savedMysql;
+  }
+};
+
+// Master Function: Delete company from Cloud Store
+export const deleteCloudCompany = async (companyId: string): Promise<boolean> => {
+  let deletedMysql = false;
+  try {
+    deletedMysql = await deleteCompanyFromDb(companyId);
+  } catch (e) {}
+
+  try {
+    const { companies: currentCompanies, deletedIds } = await getCompaniesFromGist();
+    const filtered = currentCompanies.filter((c) => c.id !== companyId);
+    const updatedDeletedIds = Array.from(new Set([...deletedIds, companyId]));
+    return await saveCompaniesToGist(filtered, updatedDeletedIds);
+  } catch (e) {
+    return deletedMysql;
+  }
+};
+
 

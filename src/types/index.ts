@@ -50,6 +50,9 @@ export interface Company {
   tagline: string;
   badgeColor: string;
   gradient: string;
+  createdAt?: string;
+  updatedAt?: string;
+  isCustom?: boolean;
 }
 
 export interface Product {

@@ -1,5 +1,5 @@
 import mysql from 'mysql2/promise';
-import { Order, OrderItemRecord, Dukan } from '@/types';
+import { Order, OrderItemRecord, Dukan, Company } from '@/types';
 
 let pool: mysql.Pool | null = null;
 
@@ -345,3 +345,68 @@ export const deleteDukanFromDb = async (dukanId: string): Promise<boolean> => {
     return false;
   }
 };
+
+// ==========================================
+// COMPANIES / BRANDS (CRUD IN MYSQL)
+// ==========================================
+export const getCompaniesFromDb = async (): Promise<Company[]> => {
+  const p = getDbPool();
+  if (!p) return [];
+
+  try {
+    const [rows]: any = await p.query(
+      `SELECT id, name, code, description, tagline, badge_color as badgeColor, gradient
+       FROM companies ORDER BY name ASC`
+    );
+    return rows as Company[];
+  } catch (err) {
+    console.warn('[MySQL] Error fetching companies:', err);
+    return [];
+  }
+};
+
+export const upsertCompanyToDb = async (company: Company): Promise<boolean> => {
+  const p = getDbPool();
+  if (!p) return false;
+
+  try {
+    await p.query(
+      `INSERT INTO companies (id, name, code, description, tagline, badge_color, gradient)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         name=VALUES(name),
+         code=VALUES(code),
+         description=VALUES(description),
+         tagline=VALUES(tagline),
+         badge_color=VALUES(badge_color),
+         gradient=VALUES(gradient)`,
+      [
+        company.id,
+        company.name,
+        company.code,
+        company.description || '',
+        company.tagline || '',
+        company.badgeColor || 'bg-slate-700',
+        company.gradient || 'from-slate-700 to-slate-900',
+      ]
+    );
+    return true;
+  } catch (err) {
+    console.warn('[MySQL] Error upserting company:', err);
+    return false;
+  }
+};
+
+export const deleteCompanyFromDb = async (companyId: string): Promise<boolean> => {
+  const p = getDbPool();
+  if (!p) return false;
+
+  try {
+    await p.query(`DELETE FROM companies WHERE id = ?`, [companyId]);
+    return true;
+  } catch (err) {
+    console.warn('[MySQL] Error deleting company from db:', err);
+    return false;
+  }
+};
+

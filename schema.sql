@@ -110,3 +110,38 @@ CREATE TABLE IF NOT EXISTS order_items (
   FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
   INDEX idx_order_id (order_id)
 );
+
+-- 6. COMPANIES / BRANDS
+CREATE TABLE IF NOT EXISTS companies (
+  id VARCHAR(64) PRIMARY KEY,
+  name VARCHAR(128) NOT NULL,
+  code VARCHAR(32) NOT NULL,
+  description VARCHAR(255),
+  tagline VARCHAR(255),
+  badge_color VARCHAR(64) DEFAULT 'bg-slate-700',
+  gradient VARCHAR(128) DEFAULT 'from-slate-700 to-slate-900',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Seed Initial FMCG Brands
+INSERT INTO companies (id, name, code, description, tagline, badge_color, gradient)
+VALUES
+  ('reckitt', 'Reckitt (Dettol / Harpic)', 'RB', 'Dettol Soap, Antiseptic, Harpic, Lizol', '100% Germ Protection & Hygiene', 'bg-emerald-600', 'from-emerald-600 to-teal-800'),
+  ('dabur', 'Dabur India Ltd.', 'DAB', 'Lal Dant Manjan, Red Paste, Honey, Lal Tail', 'Ayurvedic Healthcare & Oral Care', 'bg-red-600', 'from-red-600 to-amber-700'),
+  ('loreal', 'L\'Oréal & Garnier', 'LOR', 'Total Repair 5 Shampoo, Extraordinary Oil, Garnier Black Crème', 'Advanced Hair Care & Styling', 'bg-rose-700', 'from-rose-700 to-red-900'),
+  ('everest', 'Everest Spices', 'EVR', 'Garam Masala, Pav Bhaji Masala, Kitchen King', 'India\'s No. 1 Spice & Blended Masala', 'bg-amber-600', 'from-amber-600 to-orange-700'),
+  ('maxo', 'Jyothy Labs (Maxo Mosquito)', 'JYO', 'Maxo Liquid Vaporizer, Maxo Mosquito Coil, Ujala, Pril Bar', 'Home Pest Control & Fabric Care', 'bg-blue-700', 'from-blue-700 to-indigo-900'),
+  ('itc', 'ITC Foods & Personal Care', 'ITC', 'Sunfeast Dark Fantasy, Aashirvaad Atta, YiPPee Magic Masala', 'Premium Foods & Daily Biscuits', 'bg-yellow-700', 'from-yellow-700 to-amber-800'),
+  ('parachute', 'Marico (Parachute)', 'MAR-PAR', 'Parachute Pure 100% Coconut Oil, Advansed Aloe Vera Hair Oil', 'Pure Nourishment Coconut Oil', 'bg-sky-600', 'from-sky-600 to-blue-800'),
+  ('sensodyne', 'Sensodyne (Haleon / GSK)', 'SNS', 'Sensodyne Fresh Mint, Rapid Relief, Repair & Protect', '#1 Dentist Recommended for Sensitivity', 'bg-blue-600', 'from-blue-600 to-cyan-800'),
+  ('patanjali', 'Patanjali Ayurved', 'PAT', 'Dant Kanti, Kesh Kanti, Pure Cow Desi Ghee', 'Prakriti Ka Aashirwad', 'bg-orange-500', 'from-orange-500 to-amber-600'),
+  ('saffola', 'Marico (Saffola Oats & Oils)', 'MAR-SAF', 'Saffola Classic Masala Oats 500g, Saffola Gold Cooking Oil', 'Healthy Heart Lifestyle & Oats', 'bg-amber-500', 'from-amber-500 to-orange-700'),
+  ('perfetti', 'Perfetti (Center Fresh / Fruit)', 'PVM', 'Center Fresh Chewing Gum Jar, Center Fruit, Mentos', 'Confectionery Jars & Counter Candies', 'bg-teal-600', 'from-teal-600 to-emerald-800'),
+  ('godrej', 'Godrej Consumer Products', 'GCPL', 'GoodKnight Gold Flash Liquid, Cinthol Soap, Godrej No. 1, Hit', 'Mosquito Protection & Soaps', 'bg-blue-800', 'from-blue-800 to-slate-900'),
+  ('streax', 'Streax (Hygienic Research)', 'STR', 'Streax Professional Walnut Hair Serum, Cream Hair Colour', 'Professional Hair Styling & Serums', 'bg-pink-600', 'from-pink-600 to-rose-700'),
+  ('emami', 'Emami Group', 'EMM', 'Navratna Cool Oil, BoroPlus Antiseptic Cream, Zandu Balm', 'Ayurvedic Cool Oil & Health', 'bg-red-700', 'from-red-700 to-rose-800'),
+  ('bajaj', 'Bajaj Consumer Care', 'BAJ-ALM', 'Bajaj Almond Drops Hair Oil, Nomarks Ayurvedic Cream', 'Non-Sticky Almond Nourishment', 'bg-amber-700', 'from-amber-700 to-yellow-800'),
+  ('ferrero', 'Ferrero (Kinder Joy / Bomber)', 'FER', 'Kinder Joy Blue/Pink, Tic Tac Mint, Nutella Hazelnut Spread', 'Confectionery & Joy for Kids', 'bg-orange-600', 'from-orange-600 to-amber-700')
+ON DUPLICATE KEY UPDATE name=VALUES(name), code=VALUES(code), description=VALUES(description), tagline=VALUES(tagline);
+

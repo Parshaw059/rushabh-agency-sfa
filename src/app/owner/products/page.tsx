@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Product, User } from '@/types';
+import { Product, User, Company } from '@/types';
 import { INITIAL_COMPANIES } from '@/data/mockData';
 import {
   getCurrentUser,
@@ -11,6 +11,10 @@ import {
   updateProduct,
   deleteProduct,
   syncProductsWithBackend,
+  getStoredCompanies,
+  addCompany,
+  syncCompaniesWithBackend,
+  COMPANY_COLOR_PRESETS,
 } from '@/lib/storage';
 import { MobileHeader } from '@/components/MobileHeader';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
@@ -27,14 +31,23 @@ import {
   AlertCircle,
   Building2,
   RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 
 export default function OwnerProductsPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Add Company Modal State
+  const [isAddCompanyModalOpen, setIsAddCompanyModalOpen] = useState(false);
+  const [newCompanyName, setNewCompanyName] = useState('');
+  const [newCompanyCode, setNewCompanyCode] = useState('');
+  const [newCompanyTagline, setNewCompanyTagline] = useState('');
+  const [newCompanyColorIdx, setNewCompanyColorIdx] = useState(0);
 
   // Edit Product Modal State
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -64,36 +77,50 @@ export default function OwnerProductsPage() {
     }
     setCurrentUser(user);
     setProducts(getStoredProducts());
+    setCompanies(getStoredCompanies());
 
-    // 1. Fetch fresh products from Cloud
-    const loadFreshProducts = () => {
+    // 1. Fetch fresh products and companies from Cloud
+    const loadFreshData = () => {
       syncProductsWithBackend().then((fresh) => {
         if (fresh && fresh.length > 0) {
           setProducts(fresh);
         }
       });
+      syncCompaniesWithBackend().then((freshComps) => {
+        if (freshComps && freshComps.length > 0) {
+          setCompanies(freshComps);
+        }
+      });
     };
 
-    loadFreshProducts();
+    loadFreshData();
 
     // 2. Poll every 4 seconds for updates from Salesman or Cloud
-    const interval = setInterval(loadFreshProducts, 4000);
+    const interval = setInterval(loadFreshData, 4000);
 
     // 3. Listen for immediate sync events
-    const handleSync = (e: any) => {
+    const handleProductsSync = (e: any) => {
       if (e.detail) {
         setProducts(e.detail);
       }
     };
-    window.addEventListener('rushabh-products-synced', handleSync);
-    window.addEventListener('focus', loadFreshProducts);
-    window.addEventListener('visibilitychange', loadFreshProducts);
+    const handleCompaniesSync = (e: any) => {
+      if (e.detail) {
+        setCompanies(e.detail);
+      }
+    };
+
+    window.addEventListener('rushabh-products-synced', handleProductsSync);
+    window.addEventListener('rushabh-companies-synced', handleCompaniesSync);
+    window.addEventListener('focus', loadFreshData);
+    window.addEventListener('visibilitychange', loadFreshData);
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener('rushabh-products-synced', handleSync);
-      window.removeEventListener('focus', loadFreshProducts);
-      window.removeEventListener('visibilitychange', loadFreshProducts);
+      window.removeEventListener('rushabh-products-synced', handleProductsSync);
+      window.removeEventListener('rushabh-companies-synced', handleCompaniesSync);
+      window.removeEventListener('focus', loadFreshData);
+      window.removeEventListener('visibilitychange', loadFreshData);
     };
   }, [router]);
 
@@ -137,12 +164,37 @@ export default function OwnerProductsPage() {
     }
   };
 
+  // Add Company Submit
+  const handleAddCompanySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCompanyName.trim()) return;
+
+    const preset = COMPANY_COLOR_PRESETS[newCompanyColorIdx] || COMPANY_COLOR_PRESETS[0];
+    const created = addCompany({
+      name: newCompanyName.trim(),
+      code: newCompanyCode.trim() || undefined,
+      tagline: newCompanyTagline.trim() || undefined,
+      badgeColor: preset.badgeColor,
+      gradient: preset.gradient,
+    });
+
+    setCompanies(getStoredCompanies());
+    setIsAddCompanyModalOpen(false);
+    setSelectedCompanyId(created.id);
+    setNewCompanyId(created.id);
+    setNewCompanyName('');
+    setNewCompanyCode('');
+    setNewCompanyTagline('');
+    setNotification(`Added company "${created.name}"! Now click "+ Add SKU" to add products under this brand.`);
+    setTimeout(() => setNotification(null), 4000);
+  };
+
   // Add Product Submit
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
 
-    const comp = INITIAL_COMPANIES.find((c) => c.id === newCompanyId) || INITIAL_COMPANIES[0];
+    const comp = companies.find((c) => c.id === newCompanyId) || companies[0] || INITIAL_COMPANIES[0];
     const created = addProduct({
       companyId: comp.id,
       companyName: comp.name,
@@ -159,7 +211,7 @@ export default function OwnerProductsPage() {
     setNewName('');
     setNewPackSize('');
     setNewWdmsCode('');
-    setNotification(`Added new product "${created.name}" successfully!`);
+    setNotification(`Added new product "${created.name}" under ${comp.name} successfully!`);
     setTimeout(() => setNotification(null), 3500);
   };
 
@@ -200,13 +252,24 @@ export default function OwnerProductsPage() {
             </p>
           </div>
 
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="p-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center gap-1 shadow-md shadow-emerald-700/20 flex-shrink-0 active:scale-[0.98]"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add SKU</span>
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => setIsAddCompanyModalOpen(true)}
+              className="p-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black text-xs flex items-center gap-1 shadow-md shadow-purple-700/20 active:scale-[0.98]"
+              title="Add New FMCG Brand Agency"
+            >
+              <Building2 className="w-4 h-4" />
+              <span>+ Add Comp</span>
+            </button>
+
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="p-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center gap-1 shadow-md shadow-emerald-700/20 active:scale-[0.98]"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Add SKU</span>
+            </button>
+          </div>
         </div>
 
         {/* Notification banner */}
@@ -230,8 +293,8 @@ export default function OwnerProductsPage() {
             />
           </div>
 
-          {/* Company filter chips */}
-          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+          {/* Company filter chips with + Add Comp at the last */}
+          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none items-center">
             <button
               onClick={() => setSelectedCompanyId('all')}
               className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-black transition-all ${
@@ -242,7 +305,7 @@ export default function OwnerProductsPage() {
             >
               All Brands ({products.length})
             </button>
-            {INITIAL_COMPANIES.map((c) => (
+            {companies.map((c) => (
               <button
                 key={c.id}
                 onClick={() => setSelectedCompanyId(c.id)}
@@ -256,6 +319,16 @@ export default function OwnerProductsPage() {
                 <span>{c.name.split(' ')[0]}</span>
               </button>
             ))}
+
+            {/* At the last of company selection: + Add Comp name */}
+            <button
+              onClick={() => setIsAddCompanyModalOpen(true)}
+              className="flex-shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-black flex items-center gap-1 bg-purple-50 text-purple-700 border border-dashed border-purple-300 hover:bg-purple-100 hover:border-purple-400 transition-all shadow-xs active:scale-95"
+              title="Add New Brand / Company"
+            >
+              <Plus className="w-3.5 h-3.5 text-purple-600" />
+              <span>+ Add Comp</span>
+            </button>
           </div>
         </div>
 
@@ -449,17 +522,30 @@ export default function OwnerProductsPage() {
 
             <form onSubmit={handleAddSubmit} className="space-y-3 text-xs">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Company / Brand:
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-bold text-slate-700">
+                    Company / Brand *:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddModalOpen(false);
+                      setIsAddCompanyModalOpen(true);
+                    }}
+                    className="text-[11px] font-bold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 px-2 py-0.5 rounded-md flex items-center gap-1 transition-colors"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>+ New Brand</span>
+                  </button>
+                </div>
                 <select
                   value={newCompanyId}
                   onChange={(e) => setNewCompanyId(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold focus:ring-2 focus:ring-emerald-500 bg-white"
                 >
-                  {INITIAL_COMPANIES.map((c) => (
+                  {companies.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name}
+                      {c.name} ({c.code})
                     </option>
                   ))}
                 </select>
@@ -474,7 +560,7 @@ export default function OwnerProductsPage() {
                   required
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  placeholder="e.g. Dabur Red Gel Toothpaste"
+                  placeholder="e.g. Britannia Good Day Butter"
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
@@ -488,7 +574,7 @@ export default function OwnerProductsPage() {
                     type="text"
                     value={newPackSize}
                     onChange={(e) => setNewPackSize(e.target.value)}
-                    placeholder="e.g. 150g"
+                    placeholder="e.g. 100g, 200ml"
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
@@ -501,7 +587,7 @@ export default function OwnerProductsPage() {
                     type="text"
                     value={newWdmsCode}
                     onChange={(e) => setNewWdmsCode(e.target.value)}
-                    placeholder="e.g. DAB-RED-150G"
+                    placeholder="e.g. BRIT-GD-100"
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono font-bold focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
@@ -548,6 +634,128 @@ export default function OwnerProductsPage() {
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Company / Brand Modal */}
+      {isAddCompanyModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="max-w-md w-full bg-white rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">
+                  NEW COMPANY / BRAND
+                </span>
+                <h3 className="text-sm font-black text-slate-900 mt-1">
+                  Add Brand Distribution Agency
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsAddCompanyModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddCompanySubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-black text-slate-800 mb-1">
+                  Company / Brand Name *:
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newCompanyName}
+                  onChange={(e) => {
+                    setNewCompanyName(e.target.value);
+                    if (!newCompanyCode) {
+                      setNewCompanyCode(e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase());
+                    }
+                  }}
+                  placeholder="e.g. Britannia Industries, Balaji Wafers, Cadbury"
+                  className="w-full px-3 py-2 rounded-xl border-2 border-purple-200 focus:border-purple-500 font-black text-sm text-slate-900 focus:ring-2 focus:ring-purple-200"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Short Code:
+                  </label>
+                  <input
+                    type="text"
+                    value={newCompanyCode}
+                    onChange={(e) => setNewCompanyCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. BRIT, BAL"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono font-bold uppercase focus:ring-2 focus:ring-purple-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Used for item codes
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Category / Tagline:
+                  </label>
+                  <input
+                    type="text"
+                    value={newCompanyTagline}
+                    onChange={(e) => setNewCompanyTagline(e.target.value)}
+                    placeholder="e.g. Biscuits & Bakery"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold focus:ring-2 focus:ring-purple-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Product category
+                  </span>
+                </div>
+              </div>
+
+              {/* Color Theme Selector */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1.5">
+                  Brand Color Theme:
+                </label>
+                <div className="grid grid-cols-5 gap-2">
+                  {COMPANY_COLOR_PRESETS.map((preset, idx) => (
+                    <button
+                      key={preset.name}
+                      type="button"
+                      onClick={() => setNewCompanyColorIdx(idx)}
+                      className={`p-1.5 rounded-xl border flex flex-col items-center gap-1 transition-all ${
+                        newCompanyColorIdx === idx
+                          ? 'border-purple-600 bg-purple-50 ring-2 ring-purple-300'
+                          : 'border-slate-200 hover:border-slate-300 bg-slate-50'
+                      }`}
+                    >
+                      <span className={`w-4 h-4 rounded-full ${preset.badgeColor} shadow-2xs`} />
+                      <span className="text-[8px] font-bold text-slate-600 truncate max-w-full">
+                        {preset.name.split(' ')[0]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black text-xs shadow-md shadow-purple-700/20 flex items-center justify-center gap-1.5"
+                >
+                  <Building2 className="w-4 h-4" />
+                  <span>Save Company</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAddCompanyModalOpen(false)}
                   className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs"
                 >
                   Cancel
