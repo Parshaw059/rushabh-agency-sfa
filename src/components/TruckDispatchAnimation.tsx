@@ -21,16 +21,26 @@ export const TruckDispatchAnimation: React.FC<TruckDispatchAnimationProps> = ({
   totalUnits,
   onComplete,
 }) => {
-  // Stages: 'entering' | 'loading' | 'closing' | 'confirmed' | 'departing'
-  const [stage, setStage] = useState<'entering' | 'loading' | 'closing' | 'confirmed' | 'departing'>('entering');
+  // Stages: 'entering' | 'loading' | 'closing' | 'confirmed'
+  const [stage, setStage] = useState<'entering' | 'loading' | 'closing' | 'confirmed'>('entering');
   const [loadedCount, setLoadedCount] = useState<number>(0);
+
+  const onCompleteRef = React.useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  const hasStartedRef = React.useRef(false);
 
   useEffect(() => {
     if (!isOpen) {
       setStage('entering');
       setLoadedCount(0);
+      hasStartedRef.current = false;
       return;
     }
+
+    // Ensure the animation sequence executes strictly once and cannot be reset by re-renders
+    if (hasStartedRef.current) return;
+    hasStartedRef.current = true;
 
     // Attempt haptic vibration on mobile
     try {
@@ -39,17 +49,17 @@ export const TruckDispatchAnimation: React.FC<TruckDispatchAnimationProps> = ({
       }
     } catch (e) {}
 
-    // Stage 1: Truck Enters (0 - 1000ms)
+    // Stage 1: Truck Enters (0 - 700ms)
     const t1 = setTimeout(() => {
       setStage('loading');
       setLoadedCount(1);
-    }, 1000);
+    }, 700);
 
-    // Stage 2: Parcels loading (1000ms - 2400ms)
-    const tLoad2 = setTimeout(() => setLoadedCount(2), 1400);
-    const tLoad3 = setTimeout(() => setLoadedCount(3), 1800);
+    // Stage 2: Parcels loading (700ms - 1500ms)
+    const tLoad2 = setTimeout(() => setLoadedCount(2), 1000);
+    const tLoad3 = setTimeout(() => setLoadedCount(3), 1300);
 
-    // Stage 3: Close trailer door (2400ms - 3200ms)
+    // Stage 3: Close trailer door (1500ms - 2200ms)
     const t2 = setTimeout(() => {
       setStage('closing');
       try {
@@ -57,9 +67,9 @@ export const TruckDispatchAnimation: React.FC<TruckDispatchAnimationProps> = ({
           navigator.vibrate([80]);
         }
       } catch (e) {}
-    }, 2400);
+    }, 1500);
 
-    // Stage 4: Order Confirmed Announcement (3200ms - 4400ms)
+    // Stage 4: Order Confirmed Announcement (2200ms - 3200ms)
     const t3 = setTimeout(() => {
       setStage('confirmed');
 
@@ -82,17 +92,12 @@ export const TruckDispatchAnimation: React.FC<TruckDispatchAnimationProps> = ({
           window.speechSynthesis.speak(utterance);
         }
       } catch (e) {}
-    }, 3200);
+    }, 2200);
 
-    // Stage 5: Truck drives off (4400ms - 5400ms)
+    // Finish & transition to receipt once Order Confirmed is shown (3200ms)
     const t4 = setTimeout(() => {
-      setStage('departing');
-    }, 4400);
-
-    // Finish & transition to receipt (5300ms)
-    const t5 = setTimeout(() => {
-      onComplete();
-    }, 5300);
+      onCompleteRef.current();
+    }, 3200);
 
     return () => {
       clearTimeout(t1);
@@ -101,9 +106,8 @@ export const TruckDispatchAnimation: React.FC<TruckDispatchAnimationProps> = ({
       clearTimeout(t2);
       clearTimeout(t3);
       clearTimeout(t4);
-      clearTimeout(t5);
     };
-  }, [isOpen, onComplete]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -129,7 +133,6 @@ export const TruckDispatchAnimation: React.FC<TruckDispatchAnimationProps> = ({
           {stage === 'loading' && 'Loading Cartons into Trailer...'}
           {stage === 'closing' && 'Closing & Sealing Trailer Door...'}
           {stage === 'confirmed' && '🎉 ORDER CONFIRMED!'}
-          {stage === 'departing' && 'Dispatched for Delivery!'}
         </h2>
 
         <p className="text-xs text-slate-300 max-w-xs mx-auto">
@@ -155,11 +158,9 @@ export const TruckDispatchAnimation: React.FC<TruckDispatchAnimationProps> = ({
 
         {/* TRUCK CONTAINER WRAPPER */}
         <div
-          className={`relative z-10 transition-all duration-1000 ease-out flex items-end ${
+          className={`relative z-10 transition-all duration-700 ease-out flex items-end ${
             stage === 'entering'
               ? '-translate-x-full opacity-40'
-              : stage === 'departing'
-              ? 'translate-x-[140%] opacity-0 duration-700 ease-in'
               : 'translate-x-0 opacity-100'
           }`}
           style={{ bottom: '26px' }}
@@ -255,7 +256,7 @@ export const TruckDispatchAnimation: React.FC<TruckDispatchAnimationProps> = ({
             {/* Back Wheel 1 */}
             <div
               className={`absolute -bottom-3 left-4 w-7 h-7 rounded-full bg-slate-900 border-2 border-slate-600 flex items-center justify-center shadow-md ${
-                stage === 'entering' || stage === 'departing' ? 'animate-spin' : ''
+                stage === 'entering' ? 'animate-spin' : ''
               }`}
             >
               <div className="w-3 h-3 rounded-full bg-slate-400 border border-slate-500" />
@@ -264,7 +265,7 @@ export const TruckDispatchAnimation: React.FC<TruckDispatchAnimationProps> = ({
             {/* Back Wheel 2 */}
             <div
               className={`absolute -bottom-3 left-13 w-7 h-7 rounded-full bg-slate-900 border-2 border-slate-600 flex items-center justify-center shadow-md ${
-                stage === 'entering' || stage === 'departing' ? 'animate-spin' : ''
+                stage === 'entering' ? 'animate-spin' : ''
               }`}
             >
               <div className="w-3 h-3 rounded-full bg-slate-400 border border-slate-500" />
@@ -273,7 +274,7 @@ export const TruckDispatchAnimation: React.FC<TruckDispatchAnimationProps> = ({
             {/* Front Wheel */}
             <div
               className={`absolute -bottom-3 right-4 w-7 h-7 rounded-full bg-slate-900 border-2 border-slate-600 flex items-center justify-center shadow-md ${
-                stage === 'entering' || stage === 'departing' ? 'animate-spin' : ''
+                stage === 'entering' ? 'animate-spin' : ''
               }`}
             >
               <div className="w-3 h-3 rounded-full bg-slate-400 border border-slate-500" />
@@ -292,7 +293,7 @@ export const TruckDispatchAnimation: React.FC<TruckDispatchAnimationProps> = ({
         )}
 
         {/* ORDER CONFIRMED POPUP BADGE */}
-        {(stage === 'confirmed' || stage === 'departing') && (
+        {stage === 'confirmed' && (
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 backdrop-blur-2xs animate-in zoom-in-90 duration-300">
             <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 p-4 rounded-3xl border-2 border-emerald-300 shadow-2xl text-center space-y-1.5 max-w-[260px]">
               <div className="w-10 h-10 rounded-2xl bg-white text-emerald-700 flex items-center justify-center mx-auto shadow-md">
@@ -318,7 +319,7 @@ export const TruckDispatchAnimation: React.FC<TruckDispatchAnimationProps> = ({
           <span className={stage === 'entering' ? 'text-emerald-400' : ''}>1. Arrive</span>
           <span className={stage === 'loading' ? 'text-emerald-400' : ''}>2. Load Box</span>
           <span className={stage === 'closing' ? 'text-emerald-400' : ''}>3. Close Door</span>
-          <span className={stage === 'confirmed' || stage === 'departing' ? 'text-emerald-400 font-extrabold' : ''}>4. Confirmed!</span>
+          <span className={stage === 'confirmed' ? 'text-emerald-400 font-extrabold' : ''}>4. Confirmed!</span>
         </div>
 
         <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">

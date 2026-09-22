@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Dukan, Product, CartItem, User, Order } from '@/types';
 import { INITIAL_COMPANIES } from '@/data/mockData';
@@ -312,6 +312,12 @@ export default function SalesmanOrderTakingPage() {
     });
   };
 
+  // Handler when truck trailer dispatch animation completes
+  const handleTruckAnimationComplete = useCallback(() => {
+    setShowTruckAnimation(false);
+    setIsReceiptOpen(true);
+  }, []);
+
   // Submit order to database with truck dispatch animation
   const handleSubmitOrder = () => {
     if (!currentUser || !dukan || cartItems.length === 0) return;
@@ -339,6 +345,12 @@ export default function SalesmanOrderTakingPage() {
         items: orderItemRecords,
         notes,
       });
+      setCompletedOrder(savedOrder);
+      setCartItems([]);
+      setIsReviewOpen(false);
+      setIsSubmitting(false);
+      // Already confirmed today — open updated bill receipt directly without re-running animation
+      setIsReceiptOpen(true);
     } else {
       // Create new bill
       savedOrder = createSalesmanOrder({
@@ -349,14 +361,13 @@ export default function SalesmanOrderTakingPage() {
         items: orderItemRecords,
         notes,
       });
+      setCompletedOrder(savedOrder);
+      setCartItems([]);
+      setIsReviewOpen(false);
+      setIsSubmitting(false);
+      // Brand new order: launch trailer animation only one time until order is confirmed
+      setShowTruckAnimation(true);
     }
-
-    setCompletedOrder(savedOrder);
-    setCartItems([]);
-    setIsReviewOpen(false);
-    setIsSubmitting(false);
-    // Launch delightful truck parcel loading & dispatch animation
-    setShowTruckAnimation(true);
   };
 
   // Active Company
@@ -884,10 +895,7 @@ export default function SalesmanOrderTakingPage() {
         totalBoxes={completedOrder?.totalBoxes || 0}
         totalLoose={completedOrder?.totalLoose || 0}
         totalUnits={completedOrder?.totalUnits || 0}
-        onComplete={() => {
-          setShowTruckAnimation(false);
-          setIsReceiptOpen(true);
-        }}
+        onComplete={handleTruckAnimationComplete}
       />
 
       {/* Post-Order Receipt Modal */}
