@@ -13,6 +13,7 @@ import {
   updateOrderItems,
   deleteOrder,
   generateWdmsSalesmanCsv,
+  isDateToday,
 } from '@/lib/storage';
 import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp } from '@/utils/generatePdfReceipt';
 import { MobileHeader } from '@/components/MobileHeader';
@@ -47,6 +48,7 @@ export default function OwnerOrdersPage() {
   const [allTrips, setAllTrips] = useState<Trip[]>([]);
   const [viewTab, setViewTab] = useState<'ORDERS' | 'PENDING'>('ORDERS');
   const [selectedTripFilter, setSelectedTripFilter] = useState<string>('all');
+  const [dateFilter, setDateFilter] = useState<'today' | 'all'>('today');
   const [activeOrderForDetail, setActiveOrderForDetail] = useState<Order | null>(null);
   const [slipModalOrder, setSlipModalOrder] = useState<Order | null>(null);
 
@@ -174,7 +176,10 @@ export default function OwnerOrdersPage() {
     ])
   );
 
+  const todayOrdersCount = orders.filter((o) => isDateToday(o.createdAt)).length;
+
   const filteredOrders = orders.filter((o) => {
+    if (dateFilter === 'today' && !isDateToday(o.createdAt)) return false;
     if (selectedTripFilter !== 'all' && o.tripName !== selectedTripFilter) return false;
     return true;
   });
@@ -244,6 +249,32 @@ export default function OwnerOrdersPage() {
             <span>{notification}</span>
           </div>
         )}
+
+        {/* Date Filter: Today's Fresh Bills (Default) vs All History */}
+        <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-200/70 rounded-2xl">
+          <button
+            onClick={() => setDateFilter('today')}
+            className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+              dateFilter === 'today'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>Today&apos;s Bills ({todayOrdersCount})</span>
+          </button>
+
+          <button
+            onClick={() => setDateFilter('all')}
+            className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+              dateFilter === 'all'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span>All History ({orders.length})</span>
+          </button>
+        </div>
 
         {/* Filter Trip */}
         <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between text-xs">
