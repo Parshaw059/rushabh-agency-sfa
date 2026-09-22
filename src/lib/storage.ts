@@ -13,9 +13,30 @@ const TRIPS_KEY = 'rushabh_app_trips_v4';
 const DUKANS_KEY = 'rushabh_app_dukans_v4';
 const PRODUCTS_KEY = 'rushabh_app_products_v4';
 const ORDERS_KEY = 'rushabh_app_orders_v4';
+const LOCAL_DELETED_ORDERS_KEY = 'rushabh_deleted_order_ids_v1';
 const CURRENT_USER_KEY = 'rushabh_app_current_user_v4';
 
 const isBrowser = typeof window !== 'undefined';
+
+// LOCAL DELETED ORDERS TOMBSTONES
+export const getLocalDeletedOrderIds = (): string[] => {
+  if (!isBrowser) return [];
+  try {
+    const data = localStorage.getItem(LOCAL_DELETED_ORDERS_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+export const addLocalDeletedOrderIds = (ids: string[]): void => {
+  if (!isBrowser) return;
+  try {
+    const existing = getLocalDeletedOrderIds();
+    const updated = Array.from(new Set([...existing, ...ids.filter(Boolean)]));
+    localStorage.setItem(LOCAL_DELETED_ORDERS_KEY, JSON.stringify(updated));
+  } catch (e) {}
+};
 
 // USERS & AUTH
 export const getStoredUsers = (): User[] => {
@@ -273,17 +294,17 @@ export const getDukansWithDailyStatus = (tripId?: string): DukanDailyStatus[] =>
       (o) => o.dukanId === dukan.id && isDateToday(o.createdAt)
     );
 
-    const isBookedToday = Boolean(todayOrder) || (dukan.visitStatus === 'ORDER_BOOKED' && isDateToday(dukan.lastOrderDate));
+    const isBookedToday = Boolean(todayOrder);
 
     return {
       ...dukan,
       visitStatus: isBookedToday ? ('ORDER_BOOKED' as const) : ('PENDING' as const),
       isBookedToday,
       todayOrder: todayOrder || undefined,
-      lastOrderAmount: todayOrder ? todayOrder.totalMrpValue : dukan.lastOrderAmount,
-      lastOrderNumber: todayOrder ? todayOrder.orderNumber : dukan.lastOrderNumber,
-      lastOrderId: todayOrder ? todayOrder.id : dukan.lastOrderId,
-      lastOrderDate: todayOrder ? todayOrder.createdAt : dukan.lastOrderDate,
+      lastOrderAmount: todayOrder ? todayOrder.totalMrpValue : undefined,
+      lastOrderNumber: todayOrder ? todayOrder.orderNumber : undefined,
+      lastOrderId: todayOrder ? todayOrder.id : undefined,
+      lastOrderDate: todayOrder ? todayOrder.createdAt : undefined,
     };
   });
 };
@@ -590,7 +611,16 @@ export const getStoredOrders = (): Order[] => {
     localStorage.setItem(ORDERS_KEY, JSON.stringify(INITIAL_ORDERS));
     return INITIAL_ORDERS;
   }
-  return JSON.parse(data);
+  try {
+    const orders: Order[] = JSON.parse(data);
+    if (!Array.isArray(orders)) return INITIAL_ORDERS;
+    const deleted = getLocalDeletedOrderIds();
+    if (deleted.length === 0) return orders;
+    const deletedSet = new Set(deleted);
+    return orders.filter((o) => !deletedSet.has(o.id) && !deletedSet.has(o.orderNumber));
+  } catch (e) {
+    return INITIAL_ORDERS;
+  }
 };
 
 export const saveOrders = (orders: Order[]): void => {
@@ -609,8 +639,28 @@ export const createSalesmanOrder = (params: {
   notes?: string;
 }): Order => {
   const orders = getStoredOrders();
-  const nextNum = 8000 + orders.length + 1;
-  const orderNumber = `ORD-${nextNum}`;
+  const deletedIds = getLocalDeletedOrderIds();
+
+  // Find highest existing numerical suffix across all known orders and deleted IDs
+  let maxNum = 8000;
+  const parseNum = (str?: string) => {
+    if (!str) return;
+    const match = str.match(/ORD-(\d+)/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num < 1000000) {
+        if (num > maxNum) maxNum = num;
+      }
+    }
+  };
+
+  orders.forEach((o) => {
+    parseNum(o.orderNumber);
+    parseNum(o.id);
+  });
+  deletedIds.forEach((id) => parseNum(id));
+
+  const orderNumber = `ORD-${maxNum + 1}`;
 
   const totalBoxes = params.items.reduce((sum, item) => sum + item.boxQty, 0);
   const totalLoose = params.items.reduce((sum, item) => sum + item.looseQty, 0);
@@ -764,7 +814,30 @@ export const deleteOrder = (orderId: string): Order[] => {
   const remaining = orders.filter((o) => o.id !== orderId && o.orderNumber !== orderId);
   saveOrders(remaining);
 
-  // If the deleted order belonged to a dukan, revert that dukan back to PENDING
+  // 1. Immediately record both id and orderNumber in local tombstones
+  const toTombstone = [orderId];
+  if (orderToDelete) {
+    if (orderToDelete.id) toTombstone.push(orderToDelete.id);
+    if (orderToDelete.orderNumber) toTombstone.push(orderToDelete.orderNumber);
+  }
+  addLocalDeletedOrderIds(toTombstone);
+
+  // 2. Immediately purge from offline order queue so it is NEVER flushed or re-POSTed
+  if (isBrowser) {
+    try {
+      const queueData = localStorage.getItem(QUEUE_KEY);
+      if (queueData) {
+        const queue: Order[] = JSON.parse(queueData);
+        const tombSet = new Set(toTombstone);
+        const filteredQueue = queue.filter(
+          (o) => !tombSet.has(o.id) && !tombSet.has(o.orderNumber)
+        );
+        localStorage.setItem(QUEUE_KEY, JSON.stringify(filteredQueue));
+      }
+    } catch (e) {}
+  }
+
+  // 3. If the deleted order belonged to a dukan, revert that dukan back to PENDING
   if (orderToDelete) {
     updateDukanOrderRecord(orderToDelete.dukanId, {
       visitStatus: 'PENDING',
@@ -776,9 +849,15 @@ export const deleteOrder = (orderId: string): Order[] => {
     });
   }
 
-  // Sync deletion to Cloud backend
+  // 4. Dispatch sync event so all active screens and components update immediately
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('rushabh-orders-synced', { detail: remaining }));
+  }
+
+  // 5. Sync deletion to Cloud backend
+  const targetId = orderToDelete?.id || orderToDelete?.orderNumber || orderId;
   if (isBrowser && navigator.onLine) {
-    fetch(`/api/orders/${orderToDelete?.id || orderId}`, {
+    fetch(`/api/orders/${encodeURIComponent(targetId)}`, {
       method: 'DELETE',
     }).catch(() => {});
   }
@@ -848,10 +927,33 @@ export const flushOfflineOrderQueue = async (): Promise<void> => {
 export const syncOrdersWithBackend = async (): Promise<Order[]> => {
   if (!isBrowser) return getStoredOrders();
 
-  // Attempt to flush offline queue first
+  // 1. Get local tombstones and purge any deleted orders from offline queue
+  const localDeleted = getLocalDeletedOrderIds();
+  const localDeletedSet = new Set<string>(localDeleted);
+
+  try {
+    const queueData = localStorage.getItem(QUEUE_KEY);
+    if (queueData) {
+      const queue: Order[] = JSON.parse(queueData);
+      const cleanedQueue = queue.filter(
+        (o) => !localDeletedSet.has(o.id) && !localDeletedSet.has(o.orderNumber)
+      );
+      if (cleanedQueue.length !== queue.length) {
+        localStorage.setItem(QUEUE_KEY, JSON.stringify(cleanedQueue));
+      }
+    }
+  } catch (e) {}
+
+  // 2. Flush offline queue to Cloud
   await flushOfflineOrderQueue();
 
-  if (!navigator.onLine) return getStoredOrders();
+  if (!navigator.onLine) {
+    const current = getStoredOrders().filter(
+      (o) => !localDeletedSet.has(o.id) && !localDeletedSet.has(o.orderNumber)
+    );
+    saveOrders(current);
+    return current;
+  }
 
   try {
     const res = await fetch(`/api/orders?t=${Date.now()}`, { cache: 'no-store' });
@@ -859,18 +961,40 @@ export const syncOrdersWithBackend = async (): Promise<Order[]> => {
     const data = await res.json();
     if (data.success && Array.isArray(data.orders)) {
       const cloudOrders: Order[] = data.orders;
-      const deletedIds = new Set<string>(Array.isArray(data.deletedIds) ? data.deletedIds : []);
+      const cloudDeletedIds: string[] = Array.isArray(data.deletedIds) ? data.deletedIds : [];
+
+      // Combine cloud tombstones with local tombstones
+      const allDeletedIds = new Set<string>([...cloudDeletedIds, ...localDeleted]);
+
+      // Save any newly learned cloud tombstones into local storage
+      if (cloudDeletedIds.length > 0) {
+        addLocalDeletedOrderIds(cloudDeletedIds);
+      }
+
+      // If we have local deleted IDs that haven't reached cloud tombstones yet, fire DELETE in background
+      const unsyncedDeletes = localDeleted.filter((id) => !cloudDeletedIds.includes(id));
+      if (unsyncedDeletes.length > 0) {
+        unsyncedDeletes.slice(0, 5).forEach((delId) => {
+          fetch(`/api/orders/${encodeURIComponent(delId)}`, { method: 'DELETE' }).catch(() => {});
+        });
+      }
+
       const localOrders = getStoredOrders();
 
-      // 1. Remove any local orders that were deleted in the cloud
-      let cleanLocal = localOrders.filter(
-        (o) => !deletedIds.has(o.id) && !deletedIds.has(o.orderNumber)
+      // 1. Remove any local orders that were deleted
+      const cleanLocal = localOrders.filter(
+        (o) => !allDeletedIds.has(o.id) && !allDeletedIds.has(o.orderNumber)
       );
 
-      // 2. Merge unique orders
+      // 2. Filter cloud orders against allDeletedIds (CRITICAL: prevents resurrecting deleted orders!)
+      const cleanCloud = cloudOrders.filter(
+        (o) => !allDeletedIds.has(o.id) && !allDeletedIds.has(o.orderNumber)
+      );
+
+      // 3. Merge unique orders
       const map = new Map<string, Order>();
       cleanLocal.forEach((o: Order) => map.set(o.id, o));
-      cloudOrders.forEach((o: Order) => map.set(o.id, o));
+      cleanCloud.forEach((o: Order) => map.set(o.id, o));
 
       const merged = Array.from(map.values()).sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()

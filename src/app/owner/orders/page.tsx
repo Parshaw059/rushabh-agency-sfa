@@ -73,7 +73,7 @@ export default function OwnerOrdersPage() {
     // Sync latest orders + dukans from Cloud
     const loadFresh = () => {
       syncAllWithBackend().then((result) => {
-        if (result && result.orders && result.orders.length > 0) {
+        if (result && Array.isArray(result.orders)) {
           setOrders(result.orders);
         }
         setDukans(getDukansWithDailyStatus());
@@ -82,14 +82,23 @@ export default function OwnerOrdersPage() {
 
     loadFresh();
 
+    const handleOrdersSynced = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setOrders(e.detail);
+      }
+      setDukans(getDukansWithDailyStatus());
+    };
+
     const interval = setInterval(loadFresh, 5000);
     window.addEventListener('focus', loadFresh);
     window.addEventListener('visibilitychange', loadFresh);
+    window.addEventListener('rushabh-orders-synced', handleOrdersSynced);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', loadFresh);
       window.removeEventListener('visibilitychange', loadFresh);
+      window.removeEventListener('rushabh-orders-synced', handleOrdersSynced);
     };
   }, [router]);
 

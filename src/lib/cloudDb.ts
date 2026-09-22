@@ -56,6 +56,12 @@ const getOrdersFromGist = async (): Promise<{ orders: Order[]; deletedIds: strin
       } catch (e) {}
     }
 
+    // Filter out any orders that are in deletedIds
+    if (deletedIds.length > 0) {
+      const delSet = new Set(deletedIds);
+      orders = orders.filter((o) => !delSet.has(o.id) && !delSet.has(o.orderNumber));
+    }
+
     return { orders, deletedIds };
   } catch (err) {
     console.warn('[CloudDb] Gist read exception:', err);
@@ -123,6 +129,13 @@ export const saveCloudOrder = async (order: Order): Promise<boolean> => {
   // Always sync to Gist Cloud Store so all devices (phones & laptops) see it immediately
   try {
     const { orders: currentOrders, deletedIds } = await getOrdersFromGist();
+
+    // If order was marked as deleted, refuse to resurrect it!
+    if (deletedIds.includes(order.id) || deletedIds.includes(order.orderNumber)) {
+      console.warn(`[CloudDb] Order ${order.id} / ${order.orderNumber} is marked as deleted. Ignoring save.`);
+      return false;
+    }
+
     const existingIdx = currentOrders.findIndex(
       (o) => o.id === order.id || o.orderNumber === order.orderNumber
     );
@@ -133,12 +146,7 @@ export const saveCloudOrder = async (order: Order): Promise<boolean> => {
       currentOrders.unshift(order);
     }
 
-    // Remove from deletedIds if present
-    const updatedDeletedIds = deletedIds.filter(
-      (id) => id !== order.id && id !== order.orderNumber
-    );
-
-    const savedGist = await saveOrdersToGist(currentOrders, updatedDeletedIds);
+    const savedGist = await saveOrdersToGist(currentOrders, deletedIds);
     return savedMysql || savedGist;
   } catch (e) {
     return savedMysql;
@@ -192,8 +200,17 @@ export const deleteCloudOrder = async (orderId: string): Promise<boolean> => {
 
   try {
     const { orders: currentOrders, deletedIds } = await getOrdersFromGist();
-    const filtered = currentOrders.filter((o) => o.id !== orderId && o.orderNumber !== orderId);
-    const updatedDeletedIds = Array.from(new Set([...deletedIds, orderId]));
+    const matching = currentOrders.find((o) => o.id === orderId || o.orderNumber === orderId);
+    const toTombstone = [orderId];
+    if (matching) {
+      if (matching.id) toTombstone.push(matching.id);
+      if (matching.orderNumber) toTombstone.push(matching.orderNumber);
+    }
+    const tombstoneSet = new Set(toTombstone);
+    const filtered = currentOrders.filter(
+      (o) => !tombstoneSet.has(o.id) && !tombstoneSet.has(o.orderNumber)
+    );
+    const updatedDeletedIds = Array.from(new Set([...deletedIds, ...toTombstone]));
     const savedGist = await saveOrdersToGist(filtered, updatedDeletedIds);
     return deletedMysql || savedGist;
   } catch (e) {
