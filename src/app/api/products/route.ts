@@ -10,13 +10,23 @@ export const revalidate = 0;
 export async function GET() {
   try {
     const { products, deletedIds, source } = await getCloudProducts();
-    return NextResponse.json({
-      success: true,
-      source,
-      products,
-      deletedIds: deletedIds || [],
-      timestamp: new Date().toISOString(),
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        source,
+        products,
+        deletedIds: deletedIds || [],
+        timestamp: new Date().toISOString(),
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+          Pragma: 'no-cache',
+          Expires: '0',
+          'Surrogate-Control': 'no-store',
+        },
+      }
+    );
   } catch (error: any) {
     return NextResponse.json(
       {

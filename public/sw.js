@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rushabh-agency-offline-v2';
+const CACHE_NAME = 'rushabh-agency-offline-v3';
 
 const PRECACHE_URLS = [
   '/',
@@ -36,6 +36,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
+
+  // CRITICAL: NEVER cache API requests in Service Worker! Always go straight to network
+  if (url.pathname.startsWith('/api/')) {
+    return;
+  }
 
   // For HTML page navigation: Network first, fall back to cache
   if (event.request.mode === 'navigate') {

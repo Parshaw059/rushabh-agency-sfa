@@ -854,7 +854,7 @@ export const syncOrdersWithBackend = async (): Promise<Order[]> => {
   if (!navigator.onLine) return getStoredOrders();
 
   try {
-    const res = await fetch('/api/orders', { cache: 'no-store' });
+    const res = await fetch(`/api/orders?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) return getStoredOrders();
     const data = await res.json();
     if (data.success && Array.isArray(data.orders)) {
@@ -930,7 +930,7 @@ export const syncDukansWithBackend = async (): Promise<Dukan[]> => {
   if (!navigator.onLine) return getStoredDukans();
 
   try {
-    const res = await fetch('/api/dukans', { cache: 'no-store' });
+    const res = await fetch(`/api/dukans?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) return getStoredDukans();
     const data = await res.json();
     if (data.success && Array.isArray(data.dukans)) {
@@ -1042,7 +1042,7 @@ export const syncProductsWithBackend = async (): Promise<Product[]> => {
   if (!navigator.onLine) return getStoredProducts();
 
   try {
-    const res = await fetch('/api/products', { cache: 'no-store' });
+    const res = await fetch(`/api/products?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) return getStoredProducts();
     const data = await res.json();
     if (data.success && Array.isArray(data.products)) {

@@ -158,8 +158,10 @@ export default function SalesmanOrderTakingPage() {
         setExistingTodayOrder(priorOrder);
 
         // Pre-load previous bill items into cart so additions happen on the same bill
+        const currentProductsList = getStoredProducts();
         const preloadedCart: CartItem[] = priorOrder.items.map((item) => {
-          const prod = loadedProducts.find((p) => p.id === item.productId) || {
+          const prod = currentProductsList.find((p) => p.id === item.productId) ||
+            loadedProducts.find((p) => p.id === item.productId) || {
             id: item.productId,
             companyId: 'dabur',
             companyName: item.companyName,
@@ -170,12 +172,15 @@ export default function SalesmanOrderTakingPage() {
             unitsPerBox: item.unitsPerBox,
             mrp: item.mrp,
           };
+          const effectiveMrp = prod.mrp || item.mrp;
+          const effectiveUnitsPerBox = prod.unitsPerBox || item.unitsPerBox;
+          const totalUnits = item.boxQty * effectiveUnitsPerBox + item.looseQty;
           return {
-            product: prod,
+            product: { ...prod, mrp: effectiveMrp, unitsPerBox: effectiveUnitsPerBox },
             boxQty: item.boxQty,
             looseQty: item.looseQty,
-            totalUnits: item.totalUnits,
-            lineMrpTotal: item.lineMrpTotal,
+            totalUnits,
+            lineMrpTotal: totalUnits * effectiveMrp,
           };
         });
 
