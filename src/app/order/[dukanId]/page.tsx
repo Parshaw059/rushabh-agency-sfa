@@ -705,9 +705,20 @@ export default function SalesmanOrderTakingPage() {
                         >
                           <Minus className="w-3.5 h-3.5" />
                         </button>
-                        <span className="font-black text-xs text-slate-900">
-                          {boxQty}
-                        </span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={boxQty === 0 ? '' : boxQty}
+                          placeholder="0"
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9]/g, '');
+                            const num = val === '' ? 0 : parseInt(val, 10);
+                            handleUpdateItem(product, isNaN(num) ? 0 : num, looseQty);
+                          }}
+                          onFocus={(e) => e.target.select()}
+                          className="w-12 text-center font-black text-xs text-slate-900 bg-transparent outline-none focus:bg-emerald-50 focus:ring-1 focus:ring-emerald-400 rounded py-1"
+                        />
                         <button
                           type="button"
                           onClick={() => handleUpdateItem(product, boxQty + 1, looseQty)}
@@ -733,9 +744,20 @@ export default function SalesmanOrderTakingPage() {
                         >
                           <Minus className="w-3.5 h-3.5" />
                         </button>
-                        <span className="font-black text-xs text-slate-900">
-                          {looseQty}
-                        </span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={looseQty === 0 ? '' : looseQty}
+                          placeholder="0"
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9]/g, '');
+                            const num = val === '' ? 0 : parseInt(val, 10);
+                            handleUpdateItem(product, boxQty, isNaN(num) ? 0 : num);
+                          }}
+                          onFocus={(e) => e.target.select()}
+                          className="w-12 text-center font-black text-xs text-slate-900 bg-transparent outline-none focus:bg-emerald-50 focus:ring-1 focus:ring-emerald-400 rounded py-1"
+                        />
                         <button
                           type="button"
                           onClick={() => handleUpdateItem(product, boxQty, looseQty + 1)}
@@ -748,24 +770,34 @@ export default function SalesmanOrderTakingPage() {
                   </div>
 
                   {/* Quick Preset Loose Chips & Subtotal */}
-                  <div className="mt-2 flex items-center justify-between">
-                    <div className="flex items-center gap-1">
-                      <span className="text-[9px] text-slate-400 font-bold uppercase">Quick:</span>
-                      {[1, 3, 6, 12].map((num) => (
+                  <div className="mt-2.5 flex items-center justify-between gap-1 flex-wrap">
+                    <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none">
+                      <span className="text-[9px] text-slate-400 font-bold uppercase mr-0.5">Quick:</span>
+                      {[6, 12, 24, 50, 100].map((num) => (
                         <button
                           key={num}
                           type="button"
                           onClick={() => handleUpdateItem(product, boxQty, looseQty + num)}
-                          className="text-[10px] font-black px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-700 active:bg-emerald-50 active:text-emerald-800"
+                          className="text-[10px] font-black px-2 py-0.5 rounded-md bg-white hover:bg-emerald-50 hover:text-emerald-800 border border-slate-200 text-slate-700 active:scale-95 transition-all shadow-2xs"
                         >
                           +{num}
                         </button>
                       ))}
+                      {totalUnits > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateItem(product, 0, 0)}
+                          className="text-[9px] font-bold px-1.5 py-0.5 rounded text-red-500 hover:bg-red-50 ml-1 transition-all"
+                          title="Reset quantity to 0"
+                        >
+                          Reset
+                        </button>
+                      )}
                     </div>
 
                     {totalUnits > 0 && (
-                      <div className="text-right">
-                        <span className="text-[10px] text-emerald-800 font-black">
+                      <div className="text-right ml-auto flex-shrink-0">
+                        <span className="text-[10px] text-emerald-800 font-black bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                           {totalUnits} Pcs = ₹{lineMrpTotal.toFixed(2)}
                         </span>
                       </div>
