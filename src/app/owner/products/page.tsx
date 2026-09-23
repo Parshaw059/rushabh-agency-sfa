@@ -34,6 +34,7 @@ import {
   RefreshCw,
   Sparkles,
   AlertTriangle,
+  ChevronRight,
 } from 'lucide-react';
 
 export default function OwnerProductsPage() {
@@ -270,30 +271,65 @@ export default function OwnerProductsPage() {
       />
 
       <main className="p-4 space-y-4">
-        {/* Owner Action Banner */}
-        <div className="bg-white rounded-3xl p-4 border border-slate-200/90 shadow-xs flex items-center justify-between">
+        {/* Owner Action Banner with 3 Parallel Full-Width Options */}
+        <div className="bg-white rounded-3xl p-4 border border-slate-200/90 shadow-sm space-y-3">
           <div>
-            <span className="text-[10px] font-black uppercase text-purple-700 bg-purple-50 border border-purple-200/80 px-2 py-0.5 rounded-full block tracking-wider w-fit">
+            <span className="text-[10px] font-black uppercase text-purple-700 bg-purple-50 border border-purple-200/80 px-2 py-0.5 rounded-full inline-block tracking-wider">
               OWNER / ADMIN CONTROLS
             </span>
             <h2 className="text-sm font-black text-slate-900 mt-1">
-              Change Prices & Box Packaging
+              Catalog & Brand Management
             </h2>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              Add products, update MRP, or edit units per box for any brand.
+              Select an action below to add products, add new brand agencies, or remove existing brands.
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* 3 Parallel Options: 1. Add SKU, 2. Add Comp, 3. Remove Comp */}
+          <div className="space-y-2 pt-1">
+            {/* Option 1: Add SKU */}
             <button
-              onClick={() => setIsAddCompanyModalOpen(true)}
-              className="p-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black text-xs flex items-center gap-1 shadow-md shadow-purple-700/20 active:scale-[0.98]"
-              title="Add New FMCG Brand Agency"
+              onClick={() => setIsAddModalOpen(true)}
+              className="w-full p-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center justify-between shadow-md shadow-emerald-700/15 active:scale-[0.99] transition-all"
             >
-              <Building2 className="w-4 h-4" />
-              <span>+ Add Comp</span>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                  <Plus className="w-4 h-4 text-white" />
+                </div>
+                <div className="text-left">
+                  <span className="block font-black text-xs text-white">
+                    + Add New Product (SKU)
+                  </span>
+                  <span className="block text-[10px] text-emerald-100 font-normal">
+                    Add new items under any brand with MRP and units per box
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-emerald-200 flex-shrink-0" />
             </button>
 
+            {/* Option 2: Add Company */}
+            <button
+              onClick={() => setIsAddCompanyModalOpen(true)}
+              className="w-full p-3 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black text-xs flex items-center justify-between shadow-md shadow-purple-700/15 active:scale-[0.99] transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                  <Building2 className="w-4 h-4 text-white" />
+                </div>
+                <div className="text-left">
+                  <span className="block font-black text-xs text-white">
+                    + Add New Company / Brand
+                  </span>
+                  <span className="block text-[10px] text-purple-100 font-normal">
+                    Register a new FMCG distribution company brand
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-purple-200 flex-shrink-0" />
+            </button>
+
+            {/* Option 3: Remove Company */}
             <button
               onClick={() => {
                 if (selectedCompanyId !== 'all') {
@@ -304,19 +340,24 @@ export default function OwnerProductsPage() {
                   setIsSelectCompanyToDeleteModalOpen(true);
                 }
               }}
-              className="p-2.5 rounded-2xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-black text-xs flex items-center gap-1 shadow-xs active:scale-[0.98]"
-              title="Remove Company / Leave FMCG Brand Agency"
+              className="w-full p-3 rounded-2xl bg-red-50/80 hover:bg-red-100/80 text-red-600 border border-red-200 font-black text-xs flex items-center justify-between shadow-xs active:scale-[0.99] transition-all"
             >
-              <Trash2 className="w-4 h-4 text-red-500" />
-              <span>Remove Comp</span>
-            </button>
-
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="p-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center gap-1 shadow-md shadow-emerald-700/20 active:scale-[0.98]"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Add SKU</span>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0">
+                  <Trash2 className="w-4 h-4 text-red-600" />
+                </div>
+                <div className="text-left">
+                  <span className="block font-black text-xs text-red-700">
+                    {selectedCompanyId !== 'all'
+                      ? `Remove ${companies.find((c) => c.id === selectedCompanyId)?.name || 'Company'} & All Data`
+                      : 'Remove Company & All Data'}
+                  </span>
+                  <span className="block text-[10px] text-red-500 font-normal">
+                    Leave a brand agency and delete all associated products safely
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-red-400 flex-shrink-0" />
             </button>
           </div>
         </div>
