@@ -595,11 +595,23 @@ export const addCompany = (newComp: {
   return created;
 };
 
-export const deleteCompany = (companyId: string): Company[] => {
+export const deleteCompany = (
+  companyId: string
+): { companies: Company[]; deletedProductCount: number } => {
   const companies = getStoredCompanies();
   addLocalDeletedCompanyIds([companyId]);
   const filtered = companies.filter((c) => c.id !== companyId);
   saveCompanies(filtered);
+
+  // Cascade delete all products under this company from local storage
+  const products = getStoredProducts();
+  const prodsToDelete = products.filter((p) => p.companyId === companyId);
+  const remainingProducts = products.filter((p) => p.companyId !== companyId);
+  const deletedProductCount = prodsToDelete.length;
+
+  if (deletedProductCount > 0) {
+    saveProducts(remainingProducts);
+  }
 
   if (isBrowser && navigator.onLine) {
     fetch(`/api/companies?id=${companyId}`, {
@@ -609,9 +621,12 @@ export const deleteCompany = (companyId: string): Company[] => {
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('rushabh-companies-synced', { detail: filtered }));
+    if (deletedProductCount > 0) {
+      window.dispatchEvent(new CustomEvent('rushabh-products-synced', { detail: remainingProducts }));
+    }
   }
 
-  return filtered;
+  return { companies: filtered, deletedProductCount };
 };
 
 export const syncCompaniesWithBackend = async (): Promise<Company[]> => {

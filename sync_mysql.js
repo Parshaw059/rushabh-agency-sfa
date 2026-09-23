@@ -124,30 +124,80 @@ async function syncOnce() {
     // 2. Fetch companies from cloud
     try {
       const compRes = await fetchCloudJson('/api/companies');
-      if (compRes.success && Array.isArray(compRes.companies)) {
-        for (const comp of compRes.companies) {
-          await connection.query(
-            `INSERT INTO companies (id, name, code, description, tagline, badge_color, gradient)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE
-               name = VALUES(name),
-               code = VALUES(code),
-               description = VALUES(description),
-               tagline = VALUES(tagline)`,
-            [
-              comp.id,
-              comp.name,
-              comp.code,
-              comp.description || '',
-              comp.tagline || '',
-              comp.badgeColor || 'bg-slate-700',
-              comp.gradient || 'from-slate-700 to-slate-900',
-            ]
-          );
+      if (compRes.success) {
+        // Delete tombstones and cascade products
+        if (Array.isArray(compRes.deletedIds)) {
+          for (const delCompId of compRes.deletedIds) {
+            await connection.query('DELETE FROM products WHERE company_id = ?', [delCompId]);
+            await connection.query('DELETE FROM companies WHERE id = ?', [delCompId]);
+          }
+        }
+
+        if (Array.isArray(compRes.companies)) {
+          for (const comp of compRes.companies) {
+            await connection.query(
+              `INSERT INTO companies (id, name, code, description, tagline, badge_color, gradient)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON DUPLICATE KEY UPDATE
+                 name = VALUES(name),
+                 code = VALUES(code),
+                 description = VALUES(description),
+                 tagline = VALUES(tagline)`,
+              [
+                comp.id,
+                comp.name,
+                comp.code,
+                comp.description || '',
+                comp.tagline || '',
+                comp.badgeColor || 'bg-slate-700',
+                comp.gradient || 'from-slate-700 to-slate-900',
+              ]
+            );
+          }
         }
       }
     } catch (e) {
       // Companies sync is non-blocking
+    }
+
+    // 3. Fetch products from cloud
+    try {
+      const prodRes = await fetchCloudJson('/api/products');
+      if (prodRes.success) {
+        if (Array.isArray(prodRes.deletedIds)) {
+          for (const delProdId of prodRes.deletedIds) {
+            await connection.query('DELETE FROM products WHERE id = ?', [delProdId]);
+          }
+        }
+        if (Array.isArray(prodRes.products)) {
+          for (const p of prodRes.products) {
+            await connection.query(
+              `INSERT INTO products 
+              (id, name, company_id, company_name, category, pack_size, wdms_code, units_per_box, mrp)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON DUPLICATE KEY UPDATE
+                name = VALUES(name),
+                company_name = VALUES(company_name),
+                pack_size = VALUES(pack_size),
+                units_per_box = VALUES(units_per_box),
+                mrp = VALUES(mrp)`,
+              [
+                p.id,
+                p.name,
+                p.companyId,
+                p.companyName,
+                p.category || 'General',
+                p.packSize || 'Standard',
+                p.wdmsCode,
+                p.unitsPerBox || 24,
+                p.mrp || 0,
+              ]
+            );
+          }
+        }
+      }
+    } catch (e) {
+      // Products sync is non-blocking
     }
 
   } catch (err) {

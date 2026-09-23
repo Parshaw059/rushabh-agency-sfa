@@ -805,10 +805,21 @@ export const deleteCloudCompany = async (companyId: string): Promise<boolean> =>
   } catch (e) {}
 
   try {
-    const { companies: currentCompanies, deletedIds } = await getCompaniesFromGist();
-    const filtered = currentCompanies.filter((c) => c.id !== companyId);
-    const updatedDeletedIds = Array.from(new Set([...deletedIds, companyId]));
-    return await saveCompaniesToGist(filtered, updatedDeletedIds);
+    // 1. Delete and tombstone company from Gist
+    const { companies: currentCompanies, deletedIds: compDeletedIds } = await getCompaniesFromGist();
+    const filteredComps = currentCompanies.filter((c) => c.id !== companyId);
+    const updatedCompDeletedIds = Array.from(new Set([...compDeletedIds, companyId]));
+    await saveCompaniesToGist(filteredComps, updatedCompDeletedIds);
+
+    // 2. Cascade delete and tombstone all products under this company from Gist
+    const { products: currentProducts, deletedIds: prodDeletedIds } = await getProductsFromGist();
+    const prodsToDelete = currentProducts.filter((p) => p.companyId === companyId);
+    const prodIdsToTombstone = prodsToDelete.map((p) => p.id);
+    const filteredProducts = currentProducts.filter((p) => p.companyId !== companyId);
+    const updatedProdDeletedIds = Array.from(new Set([...prodDeletedIds, ...prodIdsToTombstone]));
+    await saveProductsToGist(filteredProducts, updatedProdDeletedIds);
+
+    return true;
   } catch (e) {
     return deletedMysql;
   }

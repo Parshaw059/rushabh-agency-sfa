@@ -402,10 +402,11 @@ export const deleteCompanyFromDb = async (companyId: string): Promise<boolean> =
   if (!p) return false;
 
   try {
+    await p.query(`DELETE FROM products WHERE company_id = ?`, [companyId]);
     await p.query(`DELETE FROM companies WHERE id = ?`, [companyId]);
     return true;
   } catch (err) {
-    console.warn('[MySQL] Error deleting company from db:', err);
+    console.warn('[MySQL] Error deleting company and products from db:', err);
     return false;
   }
 };

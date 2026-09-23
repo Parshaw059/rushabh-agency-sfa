@@ -13,6 +13,7 @@ import {
   syncProductsWithBackend,
   getStoredCompanies,
   addCompany,
+  deleteCompany,
   syncCompaniesWithBackend,
   COMPANY_COLOR_PRESETS,
 } from '@/lib/storage';
@@ -32,6 +33,7 @@ import {
   Building2,
   RefreshCw,
   Sparkles,
+  AlertTriangle,
 } from 'lucide-react';
 
 export default function OwnerProductsPage() {
@@ -41,6 +43,11 @@ export default function OwnerProductsPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Delete Company Confirmation State
+  const [companyToDelete, setCompanyToDelete] = useState<Company | null>(null);
+  const [deleteConfirmationInput, setDeleteConfirmationInput] = useState('');
+  const [isSelectCompanyToDeleteModalOpen, setIsSelectCompanyToDeleteModalOpen] = useState(false);
 
   // Add Company Modal State
   const [isAddCompanyModalOpen, setIsAddCompanyModalOpen] = useState(false);
@@ -189,6 +196,31 @@ export default function OwnerProductsPage() {
     setTimeout(() => setNotification(null), 4000);
   };
 
+  // Initiate Company Deletion
+  const handleInitiateDeleteCompany = (comp: Company) => {
+    setCompanyToDelete(comp);
+    setDeleteConfirmationInput('');
+  };
+
+  // Confirm Company Deletion (Deletes company and all its products)
+  const handleConfirmDeleteCompany = () => {
+    if (!companyToDelete) return;
+    if (deleteConfirmationInput.trim().toLowerCase() !== companyToDelete.name.trim().toLowerCase()) {
+      return;
+    }
+    const target = companyToDelete;
+    const { companies: updatedComps, deletedProductCount } = deleteCompany(target.id);
+    setCompanies(updatedComps);
+    setProducts(getStoredProducts());
+    setSelectedCompanyId('all');
+    setCompanyToDelete(null);
+    setDeleteConfirmationInput('');
+    setNotification(
+      `Removed company "${target.name}" and all ${deletedProductCount} products from catalog.`
+    );
+    setTimeout(() => setNotification(null), 4000);
+  };
+
   // Add Product Submit
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -252,7 +284,7 @@ export default function OwnerProductsPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             <button
               onClick={() => setIsAddCompanyModalOpen(true)}
               className="p-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black text-xs flex items-center gap-1 shadow-md shadow-purple-700/20 active:scale-[0.98]"
@@ -260,6 +292,23 @@ export default function OwnerProductsPage() {
             >
               <Building2 className="w-4 h-4" />
               <span>+ Add Comp</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (selectedCompanyId !== 'all') {
+                  const comp = companies.find((c) => c.id === selectedCompanyId);
+                  if (comp) handleInitiateDeleteCompany(comp);
+                  else setIsSelectCompanyToDeleteModalOpen(true);
+                } else {
+                  setIsSelectCompanyToDeleteModalOpen(true);
+                }
+              }}
+              className="p-2.5 rounded-2xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-black text-xs flex items-center gap-1 shadow-xs active:scale-[0.98]"
+              title="Remove Company / Leave FMCG Brand Agency"
+            >
+              <Trash2 className="w-4 h-4 text-red-500" />
+              <span>Remove Comp</span>
             </button>
 
             <button
@@ -331,6 +380,71 @@ export default function OwnerProductsPage() {
             </button>
           </div>
         </div>
+
+        {/* Selected Company Action Header (Remove Company Option) */}
+        {selectedCompanyId !== 'all' && (() => {
+          const comp = companies.find((c) => c.id === selectedCompanyId);
+          if (!comp) return null;
+          const compProductsCount = products.filter((p) => p.companyId === comp.id).length;
+
+          return (
+            <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs flex items-center justify-between gap-3 animate-in fade-in">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className={`w-2.5 h-2.5 rounded-full ${comp.badgeColor}`} />
+                  <span className="text-[10px] font-mono font-black text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.2 rounded">
+                    {comp.code}
+                  </span>
+                  <span className="text-[11px] font-bold text-slate-500">
+                    {compProductsCount} Products in Catalog
+                  </span>
+                </div>
+                <h3 className="font-black text-xs text-slate-900 truncate">
+                  {comp.name}
+                </h3>
+                <p className="text-[10px] text-slate-400 truncate">
+                  {comp.tagline || 'Agency Distribution Brand'}
+                </p>
+              </div>
+
+              <button
+                onClick={() => handleInitiateDeleteCompany(comp)}
+                className="px-2.5 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-[11px] font-black flex items-center gap-1 transition-all active:scale-95 flex-shrink-0"
+                title="Remove Company and its products from catalog"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                <span>Remove Company</span>
+              </button>
+            </div>
+          );
+        })()}
+
+        {/* Empty state if filtered brand has no products */}
+        {filtered.length === 0 && (
+          <div className="bg-white rounded-2xl p-8 border border-slate-200 text-center space-y-3">
+            <Package className="w-10 h-10 text-slate-300 mx-auto" />
+            <div>
+              <h4 className="font-black text-sm text-slate-800">No Products Found</h4>
+              <p className="text-xs text-slate-500 mt-1">
+                {selectedCompanyId !== 'all'
+                  ? 'There are no products under this brand yet. Click "+ Add SKU" to add products.'
+                  : 'No products match your search query.'}
+              </p>
+            </div>
+            {selectedCompanyId !== 'all' && (
+              <button
+                onClick={() => {
+                  setNewCompanyId(selectedCompanyId);
+                  setIsAddModalOpen(true);
+                }}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs inline-flex items-center gap-1.5 shadow-sm"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add First SKU</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Product Items List */}
         <div className="space-y-2.5">
@@ -765,6 +879,183 @@ export default function OwnerProductsPage() {
           </div>
         </div>
       )}
+
+      {/* Select Company To Remove Modal (when clicking Remove Comp while viewing All Brands) */}
+      {isSelectCompanyToDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="max-w-md w-full bg-white rounded-3xl p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center">
+                  <Trash2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">
+                    Remove Company / Brand
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Choose which company you want to leave & remove
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsSelectCompanyToDeleteModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {companies.map((c) => {
+                const prodCount = products.filter((p) => p.companyId === c.id).length;
+                return (
+                  <div
+                    key={c.id}
+                    className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 hover:border-slate-300 transition-all"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2.5 h-2.5 rounded-full ${c.badgeColor}`} />
+                        <span className="text-xs font-black text-slate-900 truncate">
+                          {c.name}
+                        </span>
+                        <span className="text-[9px] font-mono text-purple-700 bg-purple-50 px-1 py-0.2 rounded border border-purple-200">
+                          {c.code}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">
+                        {prodCount} Products / SKUs
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setIsSelectCompanyToDeleteModalOpen(false);
+                        handleInitiateDeleteCompany(c);
+                      }}
+                      className="px-2.5 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-black flex items-center gap-1 active:scale-95 transition-all"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Remove</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setIsSelectCompanyToDeleteModalOpen(false)}
+                className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Company Confirmation Modal */}
+      {companyToDelete && (() => {
+        const prodCount = products.filter((p) => p.companyId === companyToDelete.id).length;
+        const isMatched = deleteConfirmationInput.trim().toLowerCase() === companyToDelete.name.trim().toLowerCase();
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="max-w-md w-full bg-white rounded-3xl p-6 shadow-2xl border border-red-200 space-y-4">
+              <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+                <div className="w-10 h-10 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                    SAFETY CONFIRMATION
+                  </span>
+                  <h3 className="text-base font-black text-slate-900 mt-0.5">
+                    Delete {companyToDelete.name}?
+                  </h3>
+                </div>
+              </div>
+
+              <div className="space-y-3 text-xs text-slate-600">
+                <p>
+                  You are removing company <strong>{companyToDelete.name}</strong> from Rushabh Agency.
+                </p>
+                <div className="p-3 bg-red-50 border border-red-200 rounded-2xl text-red-950 font-bold space-y-1">
+                  <p className="flex items-center gap-1.5 text-red-700">
+                    <Trash2 className="w-4 h-4 flex-shrink-0" />
+                    <span>All <strong>{prodCount} products/SKUs</strong> under this brand will also be permanently deleted.</span>
+                  </p>
+                  <p className="text-[11px] text-red-800 font-normal">
+                    Salesmen will no longer see this brand on their phones, and all items will be cleared from Cloud Store and MySQL.
+                  </p>
+                </div>
+
+                {/* Company Name Confirmation Input */}
+                <div className="pt-1 space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Please write <span className="font-mono text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-200 font-black">{companyToDelete.name}</span> to confirm:
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirmationInput}
+                    onChange={(e) => setDeleteConfirmationInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && isMatched) {
+                        handleConfirmDeleteCompany();
+                      }
+                    }}
+                    placeholder={`write ${companyToDelete.name}`}
+                    autoFocus
+                    className={`w-full px-3 py-2.5 rounded-xl border-2 font-bold text-slate-900 outline-none transition-all ${
+                      isMatched
+                        ? 'border-emerald-500 bg-emerald-50/30 ring-2 ring-emerald-100'
+                        : 'border-slate-300 focus:border-red-500 focus:ring-2 focus:ring-red-100'
+                    }`}
+                  />
+                  {isMatched ? (
+                    <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Company name matched. You can now delete.</span>
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-400">
+                      Type exact name &quot;<span className="font-bold text-slate-600">{companyToDelete.name}</span>&quot; in the box above.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  disabled={!isMatched}
+                  onClick={handleConfirmDeleteCompany}
+                  className={`flex-1 py-2.5 rounded-xl font-black text-xs shadow-md flex items-center justify-center gap-1.5 transition-all ${
+                    isMatched
+                      ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-700/20 active:scale-95 cursor-pointer'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                  }`}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>{isMatched ? `Permanently Delete ${companyToDelete.name}` : `Write ${companyToDelete.name} to delete`}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCompanyToDelete(null);
+                    setDeleteConfirmationInput('');
+                  }}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50"
+                >
+                  Cancel / Keep
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <MobileBottomNav currentUser={currentUser} />
     </div>
