@@ -770,34 +770,24 @@ export default function SalesmanOrderTakingPage() {
                   </div>
 
                   {/* Quick Preset Loose Chips & Subtotal */}
-                  <div className="mt-2.5 flex items-center justify-between gap-1 flex-wrap">
-                    <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none">
-                      <span className="text-[9px] text-slate-400 font-bold uppercase mr-0.5">Quick:</span>
-                      {[6, 12, 24, 50, 100].map((num) => (
+                  <div className="mt-2 flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] text-slate-400 font-bold uppercase">Quick:</span>
+                      {[1, 3, 6, 12, 24].map((num) => (
                         <button
                           key={num}
                           type="button"
                           onClick={() => handleUpdateItem(product, boxQty, looseQty + num)}
-                          className="text-[10px] font-black px-2 py-0.5 rounded-md bg-white hover:bg-emerald-50 hover:text-emerald-800 border border-slate-200 text-slate-700 active:scale-95 transition-all shadow-2xs"
+                          className="text-[10px] font-black px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-700 active:bg-emerald-50 active:text-emerald-800"
                         >
                           +{num}
                         </button>
                       ))}
-                      {totalUnits > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateItem(product, 0, 0)}
-                          className="text-[9px] font-bold px-1.5 py-0.5 rounded text-red-500 hover:bg-red-50 ml-1 transition-all"
-                          title="Reset quantity to 0"
-                        >
-                          Reset
-                        </button>
-                      )}
                     </div>
 
                     {totalUnits > 0 && (
-                      <div className="text-right ml-auto flex-shrink-0">
-                        <span className="text-[10px] text-emerald-800 font-black bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      <div className="text-right">
+                        <span className="text-[10px] text-emerald-800 font-black">
                           {totalUnits} Pcs = ₹{lineMrpTotal.toFixed(2)}
                         </span>
                       </div>
