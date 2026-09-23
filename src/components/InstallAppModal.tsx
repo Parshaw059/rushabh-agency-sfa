@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Smartphone, QrCode, Copy, Check, X, Share2, PlusSquare, ArrowRight, ShieldCheck, Zap } from 'lucide-react';
+import QRCode from 'qrcode';
 
 interface InstallAppModalProps {
   isOpen: boolean;
@@ -13,7 +14,25 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'iphone' | 'android' | 'field'>('iphone');
 
-  const appUrl = 'http://192.168.31.223:3000';
+  const [appUrl, setAppUrl] = useState('https://rushabh-agency-app.vercel.app');
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState('/app-qr.svg');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const origin = window.location.origin;
+      if (origin && !origin.includes('localhost') && !origin.includes('127.0.0.1')) {
+        setAppUrl(origin);
+      } else {
+        setAppUrl('https://rushabh-agency-app.vercel.app');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    QRCode.toDataURL(appUrl, { margin: 1, width: 280 })
+      .then((url) => setQrCodeDataUrl(url))
+      .catch(() => setQrCodeDataUrl('/app-qr.svg'));
+  }, [appUrl]);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -90,7 +109,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
 
           <div className="w-48 h-48 mx-auto bg-white p-2 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-center">
             <img
-              src="/app-qr.svg"
+              src={qrCodeDataUrl}
               alt="Scan QR code to install Rushabh Agency App"
               className="w-full h-full object-contain"
             />
@@ -215,7 +234,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
                   2. 1-Tap WhatsApp Dispatch to Owner
                 </span>
                 <p className="text-[11px] text-slate-600 pl-5">
-                  As soon as the phone catches cell signal, tap &quot;Share Order on WhatsApp&quot; to send the complete order slip directly to Rushabh Agency owner mobile (8128232377).
+                  As soon as the phone catches cell signal, tap &quot;Share Order on WhatsApp&quot; to send the complete order slip directly to Rushabh Agency owner WhatsApp desk.
                 </p>
               </div>
 
@@ -225,7 +244,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
                   3. Universal 24/7 Global URL (Vercel)
                 </span>
                 <p className="text-[11px] text-slate-600 pl-5">
-                  Deploy to Vercel (free forever) to get a worldwide HTTPS link (e.g. <code>rushabh-agency.vercel.app</code>) accessible from any corner of the earth on 4G/5G mobile internet!
+                  Live on Vercel worldwide: <code>https://rushabh-agency-app.vercel.app</code> accessible 24/7 on 4G/5G mobile internet!
                 </p>
               </div>
             </div>
