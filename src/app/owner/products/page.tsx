@@ -79,8 +79,12 @@ export default function OwnerProductsPage() {
 
   useEffect(() => {
     const user = getCurrentUser();
-    if (!user || user.role !== 'OWNER') {
+    if (!user) {
       router.push('/login');
+      return;
+    }
+    if (user.role !== 'OWNER') {
+      router.replace('/trips');
       return;
     }
     setCurrentUser(user);

@@ -63,7 +63,7 @@ export default function OwnerOrdersPage() {
 
   useEffect(() => {
     const user = getCurrentUser();
-    if (!user || user.role !== 'OWNER') {
+    if (!user) {
       router.push('/login');
       return;
     }
@@ -201,7 +201,7 @@ export default function OwnerOrdersPage() {
     <div className="flex-1 flex flex-col pb-20 bg-[#F8FAFC]">
       <MobileHeader
         title="Field Booked Orders"
-        subtitle="All Salesmen & Trips"
+        subtitle={currentUser?.role === 'OWNER' ? 'All Salesmen & Trips' : 'Live Booked Orders & History'}
         showBack={false}
         currentUser={currentUser}
       />
@@ -212,10 +212,10 @@ export default function OwnerOrdersPage() {
           <div className="flex items-center justify-between">
             <div>
               <span className="text-[10px] font-black uppercase text-purple-700 bg-purple-50 border border-purple-200/80 px-2 py-0.5 rounded-full block tracking-wider w-fit">
-                WDMS BILLING DESK
+                {currentUser?.role === 'OWNER' ? 'WDMS BILLING DESK' : 'ORDER STATUS DESK'}
               </span>
               <h2 className="text-sm font-black text-slate-900 mt-1">
-                Live Salesman Bookings
+                {currentUser?.role === 'OWNER' ? 'Live Salesman Bookings' : 'Booked Orders & Status'}
               </h2>
             </div>
 
