@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { authenticateUser } from '@/lib/storage';
+import { authenticateUser, getCurrentUser } from '@/lib/storage';
 import {
   Phone,
   Lock,
@@ -23,6 +23,18 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
+
+  // Auto-redirect if already signed in (0ms instant access!)
+  React.useEffect(() => {
+    const user = getCurrentUser();
+    if (user) {
+      if (user.role === 'OWNER') {
+        router.replace('/owner/orders');
+      } else {
+        router.replace('/trips');
+      }
+    }
+  }, [router]);
 
   const handleLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
