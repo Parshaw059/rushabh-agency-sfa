@@ -96,13 +96,11 @@ export default function OwnerOrdersPage() {
 
     // Rate-limit protected polling (every 30s, paused in background tabs)
     const interval = setInterval(loadFresh, 30000);
-    window.addEventListener('focus', loadFresh);
     window.addEventListener('visibilitychange', loadFresh);
     window.addEventListener('rushabh-orders-synced', handleOrdersSynced);
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener('focus', loadFresh);
       window.removeEventListener('visibilitychange', loadFresh);
       window.removeEventListener('rushabh-orders-synced', handleOrdersSynced);
     };

@@ -178,7 +178,12 @@ export default function SalesmanOrderTakingPage() {
 
     window.addEventListener('rushabh-products-synced', handleProductsSynced);
     window.addEventListener('rushabh-companies-synced', handleCompaniesSynced);
-    window.addEventListener('focus', refreshData);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshData();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Check if a bill was ALREADY booked today for this retailer
     const checkOrder = () => {
@@ -225,7 +230,7 @@ export default function SalesmanOrderTakingPage() {
       clearInterval(prodInterval);
       window.removeEventListener('rushabh-products-synced', handleProductsSynced);
       window.removeEventListener('rushabh-companies-synced', handleCompaniesSynced);
-      window.removeEventListener('focus', refreshData);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [dukanId, router]);
 

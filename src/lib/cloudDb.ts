@@ -19,31 +19,25 @@ const getStoreKey = (): string => {
 
 const GIST_ID = process.env.ORDERS_GIST_ID || 'e7b80bbaf9b1c7c12d812cf0d2976f6c';
 
-// In-Memory Rate-Limit Shield (10-second TTL cache to prevent GitHub Gist 403 Rate Limit)
-const CACHE_TTL_MS = 10000;
-let ordersCache: { data: { orders: Order[]; deletedIds: string[] }; timestamp: number } | null = null;
-let dukansCache: { data: { dukans: Dukan[]; deletedIds: string[] }; timestamp: number } | null = null;
-let productsCache: { data: { products: Product[]; deletedIds: string[] }; timestamp: number } | null = null;
-let companiesCache: { data: { companies: Company[]; deletedIds: string[] }; timestamp: number } | null = null;
+// In-Memory Rate-Limit Shield (Unified Gist Cache with 25-second TTL)
+let gistFilesCache: { files: Record<string, string>; timestamp: number } | null = null;
+const GIST_CACHE_TTL_MS = 25000;
 
 export const clearCloudDbCache = () => {
-  ordersCache = null;
-  dukansCache = null;
-  productsCache = null;
-  companiesCache = null;
+  gistFilesCache = null;
 };
 
-// Helper: Fetch orders and deleted IDs from GitHub Gist Cloud Store
-const getOrdersFromGist = async (bypassCache: boolean = false): Promise<{ orders: Order[]; deletedIds: string[] }> => {
+// Unified helper: Fetch all files from GitHub Gist once and share across all entities
+const getRawGistFiles = async (bypassCache: boolean = false): Promise<Record<string, string>> => {
   const now = Date.now();
-  if (!bypassCache && ordersCache && now - ordersCache.timestamp < CACHE_TTL_MS) {
-    return ordersCache.data;
+  if (!bypassCache && gistFilesCache && now - gistFilesCache.timestamp < GIST_CACHE_TTL_MS) {
+    return gistFilesCache.files;
   }
 
   const token = getStoreKey();
   if (!token) {
     console.warn('[CloudDb] Warning: CLOUD_STORE_KEY is not configured in environment variables.');
-    return { orders: [], deletedIds: [] };
+    return {};
   }
 
   try {
@@ -58,42 +52,54 @@ const getOrdersFromGist = async (bypassCache: boolean = false): Promise<{ orders
 
     if (!res.ok) {
       console.warn('[CloudDb] Gist fetch HTTP error:', res.status);
-      return { orders: [], deletedIds: [] };
+      return gistFilesCache ? gistFilesCache.files : {};
     }
 
     const data = await res.json();
-    const ordersContent = data.files?.['orders.json']?.content;
-    const deletedContent = data.files?.['deleted_ids.json']?.content;
-
-    let orders: Order[] = [];
-    if (ordersContent) {
-      try {
-        const parsed = JSON.parse(ordersContent);
-        if (Array.isArray(parsed)) orders = parsed;
-      } catch (e) {}
+    const files: Record<string, string> = {};
+    if (data?.files) {
+      for (const [filename, fileObj] of Object.entries(data.files)) {
+        files[filename] = (fileObj as any)?.content || '';
+      }
     }
 
-    let deletedIds: string[] = [];
-    if (deletedContent) {
-      try {
-        const parsed = JSON.parse(deletedContent);
-        if (Array.isArray(parsed)) deletedIds = parsed;
-      } catch (e) {}
-    }
-
-    // Filter out any orders that are in deletedIds
-    if (deletedIds.length > 0) {
-      const delSet = new Set(deletedIds);
-      orders = orders.filter((o) => !delSet.has(o.id) && !delSet.has(o.orderNumber));
-    }
-
-    const result = { orders, deletedIds };
-    ordersCache = { data: result, timestamp: now };
-    return result;
+    gistFilesCache = { files, timestamp: now };
+    return files;
   } catch (err) {
     console.warn('[CloudDb] Gist read exception:', err);
-    return { orders: [], deletedIds: [] };
+    return gistFilesCache ? gistFilesCache.files : {};
   }
+};
+
+// Helper: Fetch orders and deleted IDs from GitHub Gist Cloud Store
+const getOrdersFromGist = async (bypassCache: boolean = false): Promise<{ orders: Order[]; deletedIds: string[] }> => {
+  const files = await getRawGistFiles(bypassCache);
+  const ordersContent = files['orders.json'];
+  const deletedContent = files['deleted_ids.json'];
+
+  let orders: Order[] = [];
+  if (ordersContent) {
+    try {
+      const parsed = JSON.parse(ordersContent);
+      if (Array.isArray(parsed)) orders = parsed;
+    } catch (e) {}
+  }
+
+  let deletedIds: string[] = [];
+  if (deletedContent) {
+    try {
+      const parsed = JSON.parse(deletedContent);
+      if (Array.isArray(parsed)) deletedIds = parsed;
+    } catch (e) {}
+  }
+
+  // Filter out any orders that are in deletedIds
+  if (deletedIds.length > 0) {
+    const delSet = new Set(deletedIds);
+    orders = orders.filter((o) => !delSet.has(o.id) && !delSet.has(o.orderNumber));
+  }
+
+  return { orders, deletedIds };
 };
 
 // Helper: Save all orders and deleted IDs to GitHub Gist Cloud Store
@@ -105,7 +111,7 @@ const saveOrdersToGist = async (orders: Order[], deletedIds?: string[]): Promise
   }
 
   try {
-    ordersCache = null; // Invalidate cache on write
+    gistFilesCache = null; // Invalidate unified cache on write
 
     const filesPayload: any = {
       'orders.json': {
@@ -259,59 +265,27 @@ export const deleteCloudOrder = async (orderId: string): Promise<boolean> => {
 
 // Helper: Fetch dukans and deleted dukan IDs from GitHub Gist
 const getDukansFromGist = async (bypassCache: boolean = false): Promise<{ dukans: Dukan[]; deletedIds: string[] }> => {
-  const now = Date.now();
-  if (!bypassCache && dukansCache && now - dukansCache.timestamp < CACHE_TTL_MS) {
-    return dukansCache.data;
+  const files = await getRawGistFiles(bypassCache);
+  const dukansContent = files['dukans.json'];
+  const deletedContent = files['deleted_dukan_ids.json'];
+
+  let dukans: Dukan[] = [];
+  if (dukansContent) {
+    try {
+      const parsed = JSON.parse(dukansContent);
+      if (Array.isArray(parsed)) dukans = parsed;
+    } catch (e) {}
   }
 
-  const token = getStoreKey();
-  if (!token) {
-    console.warn('[CloudDb] Warning: CLOUD_STORE_KEY is not configured in environment variables.');
-    return { dukans: [], deletedIds: [] };
+  let deletedIds: string[] = [];
+  if (deletedContent) {
+    try {
+      const parsed = JSON.parse(deletedContent);
+      if (Array.isArray(parsed)) deletedIds = parsed;
+    } catch (e) {}
   }
 
-  try {
-    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-      headers: {
-        Authorization: `token ${token}`,
-        'User-Agent': 'Rushabh-Agency-SFA',
-        Accept: 'application/vnd.github.v3+json',
-      },
-      cache: 'no-store',
-    });
-
-    if (!res.ok) {
-      console.warn('[CloudDb] Gist fetch HTTP error (dukans):', res.status);
-      return { dukans: [], deletedIds: [] };
-    }
-
-    const data = await res.json();
-    const dukansContent = data.files?.['dukans.json']?.content;
-    const deletedContent = data.files?.['deleted_dukan_ids.json']?.content;
-
-    let dukans: Dukan[] = [];
-    if (dukansContent) {
-      try {
-        const parsed = JSON.parse(dukansContent);
-        if (Array.isArray(parsed)) dukans = parsed;
-      } catch (e) {}
-    }
-
-    let deletedIds: string[] = [];
-    if (deletedContent) {
-      try {
-        const parsed = JSON.parse(deletedContent);
-        if (Array.isArray(parsed)) deletedIds = parsed;
-      } catch (e) {}
-    }
-
-    const result = { dukans, deletedIds };
-    dukansCache = { data: result, timestamp: now };
-    return result;
-  } catch (err) {
-    console.warn('[CloudDb] Gist read exception (dukans):', err);
-    return { dukans: [], deletedIds: [] };
-  }
+  return { dukans, deletedIds };
 };
 
 // Helper: Save all dukans and deleted IDs to GitHub Gist
@@ -323,7 +297,7 @@ const saveDukansToGist = async (dukans: Dukan[], deletedIds?: string[]): Promise
   }
 
   try {
-    dukansCache = null; // Invalidate cache on write
+    gistFilesCache = null; // Invalidate unified cache on write
 
     const filesPayload: any = {
       'dukans.json': {
@@ -518,59 +492,27 @@ export const deleteCloudDukan = async (dukanId: string): Promise<boolean> => {
 
 // Helper: Fetch products and deleted product IDs from GitHub Gist
 const getProductsFromGist = async (bypassCache: boolean = false): Promise<{ products: Product[]; deletedIds: string[] }> => {
-  const now = Date.now();
-  if (!bypassCache && productsCache && now - productsCache.timestamp < CACHE_TTL_MS) {
-    return productsCache.data;
+  const files = await getRawGistFiles(bypassCache);
+  const productsContent = files['products.json'];
+  const deletedContent = files['deleted_product_ids.json'];
+
+  let products: Product[] = [];
+  if (productsContent) {
+    try {
+      const parsed = JSON.parse(productsContent);
+      if (Array.isArray(parsed)) products = parsed;
+    } catch (e) {}
   }
 
-  const token = getStoreKey();
-  if (!token) {
-    console.warn('[CloudDb] Warning: CLOUD_STORE_KEY is not configured in environment variables.');
-    return { products: [], deletedIds: [] };
+  let deletedIds: string[] = [];
+  if (deletedContent) {
+    try {
+      const parsed = JSON.parse(deletedContent);
+      if (Array.isArray(parsed)) deletedIds = parsed;
+    } catch (e) {}
   }
 
-  try {
-    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-      headers: {
-        Authorization: `token ${token}`,
-        'User-Agent': 'Rushabh-Agency-SFA',
-        Accept: 'application/vnd.github.v3+json',
-      },
-      cache: 'no-store',
-    });
-
-    if (!res.ok) {
-      console.warn('[CloudDb] Gist fetch HTTP error (products):', res.status);
-      return { products: [], deletedIds: [] };
-    }
-
-    const data = await res.json();
-    const productsContent = data.files?.['products.json']?.content;
-    const deletedContent = data.files?.['deleted_product_ids.json']?.content;
-
-    let products: Product[] = [];
-    if (productsContent) {
-      try {
-        const parsed = JSON.parse(productsContent);
-        if (Array.isArray(parsed)) products = parsed;
-      } catch (e) {}
-    }
-
-    let deletedIds: string[] = [];
-    if (deletedContent) {
-      try {
-        const parsed = JSON.parse(deletedContent);
-        if (Array.isArray(parsed)) deletedIds = parsed;
-      } catch (e) {}
-    }
-
-    const result = { products, deletedIds };
-    productsCache = { data: result, timestamp: now };
-    return result;
-  } catch (err) {
-    console.warn('[CloudDb] Gist read exception (products):', err);
-    return { products: [], deletedIds: [] };
-  }
+  return { products, deletedIds };
 };
 
 // Helper: Save all products and deleted IDs to GitHub Gist
@@ -582,7 +524,7 @@ const saveProductsToGist = async (products: Product[], deletedIds?: string[]): P
   }
 
   try {
-    productsCache = null; // Invalidate cache on write
+    gistFilesCache = null; // Invalidate unified cache on write
 
     const filesPayload: any = {
       'products.json': {
@@ -748,59 +690,27 @@ export const deleteCloudProduct = async (productId: string): Promise<boolean> =>
 
 // Helper: Fetch companies and deleted company IDs from GitHub Gist
 const getCompaniesFromGist = async (bypassCache: boolean = false): Promise<{ companies: Company[]; deletedIds: string[] }> => {
-  const now = Date.now();
-  if (!bypassCache && companiesCache && now - companiesCache.timestamp < CACHE_TTL_MS) {
-    return companiesCache.data;
+  const files = await getRawGistFiles(bypassCache);
+  const companiesContent = files['companies.json'];
+  const deletedContent = files['deleted_company_ids.json'];
+
+  let companies: Company[] = [];
+  if (companiesContent) {
+    try {
+      const parsed = JSON.parse(companiesContent);
+      if (Array.isArray(parsed)) companies = parsed;
+    } catch (e) {}
   }
 
-  const token = getStoreKey();
-  if (!token) {
-    console.warn('[CloudDb] Warning: CLOUD_STORE_KEY is not configured in environment variables.');
-    return { companies: [], deletedIds: [] };
+  let deletedIds: string[] = [];
+  if (deletedContent) {
+    try {
+      const parsed = JSON.parse(deletedContent);
+      if (Array.isArray(parsed)) deletedIds = parsed;
+    } catch (e) {}
   }
 
-  try {
-    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-      headers: {
-        Authorization: `token ${token}`,
-        'User-Agent': 'Rushabh-Agency-SFA',
-        Accept: 'application/vnd.github.v3+json',
-      },
-      cache: 'no-store',
-    });
-
-    if (!res.ok) {
-      console.warn('[CloudDb] Gist fetch HTTP error (companies):', res.status);
-      return { companies: [], deletedIds: [] };
-    }
-
-    const data = await res.json();
-    const companiesContent = data.files?.['companies.json']?.content;
-    const deletedContent = data.files?.['deleted_company_ids.json']?.content;
-
-    let companies: Company[] = [];
-    if (companiesContent) {
-      try {
-        const parsed = JSON.parse(companiesContent);
-        if (Array.isArray(parsed)) companies = parsed;
-      } catch (e) {}
-    }
-
-    let deletedIds: string[] = [];
-    if (deletedContent) {
-      try {
-        const parsed = JSON.parse(deletedContent);
-        if (Array.isArray(parsed)) deletedIds = parsed;
-      } catch (e) {}
-    }
-
-    const result = { companies, deletedIds };
-    companiesCache = { data: result, timestamp: now };
-    return result;
-  } catch (err) {
-    console.warn('[CloudDb] Gist read exception (companies):', err);
-    return { companies: [], deletedIds: [] };
-  }
+  return { companies, deletedIds };
 };
 
 // Helper: Save all companies and deleted IDs to GitHub Gist
@@ -812,8 +722,7 @@ const saveCompaniesToGist = async (companies: Company[], deletedIds?: string[]):
   }
 
   try {
-    companiesCache = null; // Invalidate cache on write
-    productsCache = null;
+    gistFilesCache = null; // Invalidate unified cache on write
 
     const filesPayload: any = {
       'companies.json': {

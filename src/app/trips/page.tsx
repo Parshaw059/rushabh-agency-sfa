@@ -61,14 +61,12 @@ export default function TripsPage() {
       setDukans(getDukansWithDailyStatus());
     };
 
-    window.addEventListener('focus', refreshData);
     window.addEventListener('visibilitychange', refreshData);
     window.addEventListener('rushabh-orders-synced', handleSyncEvent);
     window.addEventListener('rushabh-dukans-synced', handleSyncEvent);
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener('focus', refreshData);
       window.removeEventListener('visibilitychange', refreshData);
       window.removeEventListener('rushabh-orders-synced', handleSyncEvent);
       window.removeEventListener('rushabh-dukans-synced', handleSyncEvent);

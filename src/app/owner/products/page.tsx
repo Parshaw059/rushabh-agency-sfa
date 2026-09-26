@@ -123,14 +123,12 @@ export default function OwnerProductsPage() {
 
     window.addEventListener('rushabh-products-synced', handleProductsSync);
     window.addEventListener('rushabh-companies-synced', handleCompaniesSync);
-    window.addEventListener('focus', loadFreshData);
     window.addEventListener('visibilitychange', loadFreshData);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener('rushabh-products-synced', handleProductsSync);
       window.removeEventListener('rushabh-companies-synced', handleCompaniesSync);
-      window.removeEventListener('focus', loadFreshData);
       window.removeEventListener('visibilitychange', loadFreshData);
     };
   }, [router]);

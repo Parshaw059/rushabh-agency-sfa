@@ -1336,17 +1336,6 @@ export const syncOrdersWithBackend = async (): Promise<Order[]> => {
         addLocalDeletedOrderIds(cloudDeletedIds);
       }
 
-      // If we have local deleted IDs that haven't reached cloud tombstones yet, fire DELETE in background
-      const unsyncedDeletes = localDeleted.filter((id) => !cloudDeletedIds.includes(id));
-      if (unsyncedDeletes.length > 0) {
-        unsyncedDeletes.slice(0, 5).forEach((delId) => {
-          fetch(`/api/orders/${encodeURIComponent(delId)}`, {
-            method: 'DELETE',
-            headers: { ...getAuthHeaders() },
-          }).catch(() => {});
-        });
-      }
-
       const localOrders = getStoredOrders();
 
       // 1. Remove any local orders that were deleted
@@ -1626,8 +1615,119 @@ export const forcePushAllLocalProductsToCloud = async (): Promise<{ success: boo
   }
 };
 
-// Master Function: Sync Orders, Dukans, and Products
+// Master Function: Sync Orders, Dukans, and Products in ONE unified round-trip
 export const syncAllWithBackend = async (): Promise<{ orders: Order[]; dukans: Dukan[]; products: Product[] }> => {
+  if (!isBrowser) {
+    return { orders: getStoredOrders(), dukans: getStoredDukans(), products: getStoredProducts() };
+  }
+
+  // 1. Flush offline order queue first
+  await flushOfflineOrderQueue();
+
+  if (!navigator.onLine) {
+    return { orders: getStoredOrders(), dukans: getStoredDukans(), products: getStoredProducts() };
+  }
+
+  try {
+    const res = await fetch(`/api/sync?t=${Date.now()}`, { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success) {
+        const localDeleted = getLocalDeletedOrderIds();
+        const cloudDeletedOrderIds: string[] = Array.isArray(data.deletedOrderIds) ? data.deletedOrderIds : [];
+        const allDeletedOrderIds = new Set<string>([...cloudDeletedOrderIds, ...localDeleted]);
+
+        if (cloudDeletedOrderIds.length > 0) {
+          addLocalDeletedOrderIds(cloudDeletedOrderIds);
+        }
+
+        // --- MERGE ORDERS ---
+        const cloudOrders: Order[] = Array.isArray(data.orders) ? data.orders : [];
+        const localOrders = getStoredOrders();
+        const cleanLocalOrders = localOrders.filter((o) => !allDeletedOrderIds.has(o.id) && !allDeletedOrderIds.has(o.orderNumber));
+        const cleanCloudOrders = cloudOrders.filter((o) => !allDeletedOrderIds.has(o.id) && !allDeletedOrderIds.has(o.orderNumber));
+        const ordersMap = new Map<string, Order>();
+        cleanLocalOrders.forEach((o) => ordersMap.set(o.id, o));
+        cleanCloudOrders.forEach((o) => ordersMap.set(o.id, o));
+        const mergedOrders = Array.from(ordersMap.values()).sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        saveOrders(mergedOrders);
+
+        // --- MERGE DUKANS ---
+        const cloudDukans: Dukan[] = Array.isArray(data.dukans) ? data.dukans : [];
+        const deletedDukanIds = new Set<string>(Array.isArray(data.deletedDukanIds) ? data.deletedDukanIds : []);
+        const localDukans = getStoredDukans();
+        const cleanLocalDukans = localDukans.filter((d) => !deletedDukanIds.has(d.id));
+        const combinedDukans = [...INITIAL_DUKANS, ...cleanLocalDukans, ...cloudDukans].filter(
+          (d) => !deletedDukanIds.has(d.id) && !(d.tripId === 'trip-dashrath-ranoli' && d.id.startsWith('duk-dsr-'))
+        );
+        const deduplicatedDukans = deduplicateDukans(combinedDukans);
+
+        // Update visit statuses on dukans
+        const updatedDukans = deduplicatedDukans.map((dukan) => {
+          const todayOrder = mergedOrders.find((o) => o.dukanId === dukan.id && isDateToday(o.createdAt));
+          if (todayOrder) {
+            return {
+              ...dukan,
+              visitStatus: 'ORDER_BOOKED' as const,
+              lastOrderAmount: todayOrder.totalMrpValue,
+              lastOrderNumber: todayOrder.orderNumber,
+              lastOrderId: todayOrder.id,
+              lastOrderDate: todayOrder.createdAt,
+              lastOrderTime: new Date(todayOrder.createdAt).toLocaleTimeString('en-IN', {
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+            };
+          } else {
+            return {
+              ...dukan,
+              visitStatus: 'PENDING' as const,
+              lastOrderAmount: undefined,
+              lastOrderNumber: undefined,
+              lastOrderId: undefined,
+              lastOrderDate: undefined,
+              lastOrderTime: undefined,
+            };
+          }
+        });
+        saveDukans(updatedDukans);
+
+        // Update trip retailer counts
+        const trips = getStoredTrips();
+        const updatedTrips = trips.map((t) => ({
+          ...t,
+          dukanCount: updatedDukans.filter((d) => d.tripId === t.id).length,
+        }));
+        saveTrips(updatedTrips);
+
+        // --- MERGE PRODUCTS ---
+        const cloudProducts: Product[] = Array.isArray(data.products) ? data.products : [];
+        const deletedProductIds = new Set<string>(Array.isArray(data.deletedProductIds) ? data.deletedProductIds : []);
+        const localProducts = getStoredProducts();
+        const cleanLocalProducts = localProducts.filter((p) => !deletedProductIds.has(p.id));
+        const combinedProducts = [...INITIAL_PRODUCTS, ...cleanLocalProducts, ...cloudProducts].filter(
+          (p) => !deletedProductIds.has(p.id)
+        );
+        const mergedProducts = deduplicateProducts(combinedProducts);
+        saveProducts(mergedProducts);
+
+        // Dispatch single set of events
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('rushabh-orders-synced', { detail: mergedOrders }));
+          window.dispatchEvent(new CustomEvent('rushabh-dukans-synced', { detail: updatedDukans }));
+          window.dispatchEvent(new CustomEvent('rushabh-products-synced', { detail: mergedProducts }));
+        }
+
+        return { orders: mergedOrders, dukans: updatedDukans, products: mergedProducts };
+      }
+    }
+  } catch (err) {
+    console.warn('[CloudSync] Error in unified syncAllWithBackend, falling back:', err);
+  }
+
+  // Fallback to individual sync if unified /api/sync fails
   const [orders, dukans, products] = await Promise.all([
     syncOrdersWithBackend(),
     syncDukansWithBackend(),
