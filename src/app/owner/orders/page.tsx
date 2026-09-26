@@ -63,7 +63,7 @@ export default function OwnerOrdersPage() {
 
   useEffect(() => {
     const user = getCurrentUser();
-    if (!user) {
+    if (!user || user.role !== 'OWNER') {
       router.push('/login');
       return;
     }
@@ -74,6 +74,9 @@ export default function OwnerOrdersPage() {
 
     // Sync latest orders + dukans from Cloud
     const loadFresh = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
+      }
       syncAllWithBackend().then((result) => {
         if (result && Array.isArray(result.orders)) {
           setOrders(result.orders);
@@ -91,7 +94,8 @@ export default function OwnerOrdersPage() {
       setDukans(getDukansWithDailyStatus());
     };
 
-    const interval = setInterval(loadFresh, 5000);
+    // Rate-limit protected polling (every 30s, paused in background tabs)
+    const interval = setInterval(loadFresh, 30000);
     window.addEventListener('focus', loadFresh);
     window.addEventListener('visibilitychange', loadFresh);
     window.addEventListener('rushabh-orders-synced', handleOrdersSynced);

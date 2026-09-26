@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCloudCompanies, saveCloudCompany, deleteCloudCompany } from '@/lib/cloudDb';
+import { verifyApiAuth } from '@/lib/serverAuth';
 import { Company } from '@/types';
 import { INITIAL_COMPANIES } from '@/data/mockData';
 
@@ -57,6 +58,11 @@ export async function GET() {
 
 // POST /api/companies - Save new company to Cloud Store & MySQL
 export async function POST(req: NextRequest) {
+  const auth = verifyApiAuth(req, 'OWNER');
+  if (!auth.authorized) {
+    return auth.response;
+  }
+
   try {
     const payload = await req.json();
     const company: Company = payload.company || payload;
@@ -88,6 +94,11 @@ export async function POST(req: NextRequest) {
 
 // DELETE /api/companies - Delete company from Cloud Store & MySQL
 export async function DELETE(req: NextRequest) {
+  const auth = verifyApiAuth(req, 'OWNER');
+  if (!auth.authorized) {
+    return auth.response;
+  }
+
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');

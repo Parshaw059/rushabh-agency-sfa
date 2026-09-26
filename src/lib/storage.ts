@@ -17,8 +17,32 @@ const ORDERS_KEY = 'rushabh_app_orders_v4';
 const LOCAL_DELETED_ORDERS_KEY = 'rushabh_deleted_order_ids_v1';
 const LOCAL_DELETED_COMPANIES_KEY = 'rushabh_deleted_company_ids_v1';
 const CURRENT_USER_KEY = 'rushabh_app_current_user_v4';
+const AUTH_TOKEN_KEY = 'rushabh_app_auth_token_v4';
 
 const isBrowser = typeof window !== 'undefined';
+
+// AUTH TOKEN HANDLING
+export const getAuthToken = (): string | null => {
+  if (!isBrowser) return null;
+  return localStorage.getItem(AUTH_TOKEN_KEY);
+};
+
+export const setAuthToken = (token: string | null): void => {
+  if (!isBrowser) return;
+  if (token) {
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  }
+};
+
+export const getAuthHeaders = (): Record<string, string> => {
+  const token = getAuthToken();
+  if (!token) return {};
+  return {
+    Authorization: `Bearer ${token}`,
+  };
+};
 
 // LOCAL DELETED ORDERS TOMBSTONES
 export const getLocalDeletedOrderIds = (): string[] => {
@@ -68,43 +92,61 @@ export const setCurrentUser = (user: User | null): void => {
   }
 };
 
-export const authenticateUser = (
+export const authenticateUser = async (
   identifier: string,
   secretPin?: string
-): { success: boolean; user?: User; error?: string } => {
-  const users = getStoredUsers();
+): Promise<{ success: boolean; user?: User; error?: string }> => {
   const cleanId = identifier.trim().toLowerCase();
+  const cleanPin = (secretPin || '').trim();
 
-  const found = users.find(
-    (u) =>
-      u.phone.trim() === cleanId ||
-      (u.username && u.username.toLowerCase() === cleanId)
-  );
-
-  if (!found) {
-    return {
-      success: false,
-      error: 'Account not found. Please enter valid Mobile Number or Username.',
-    };
-  }
-
-  // Verify PIN / Password
-  if (secretPin !== undefined && secretPin.trim() !== '') {
-    const expectedPin = found.pin || found.password || '1234';
-    if (secretPin.trim() !== expectedPin) {
-      return {
-        success: false,
-        error: 'Incorrect Password / PIN. Please try again.',
-      };
+  // 1. Authenticate via Server API
+  if (isBrowser) {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: cleanId, pin: cleanPin }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.user) {
+        setCurrentUser(data.user);
+        if (data.token) {
+          setAuthToken(data.token);
+        }
+        return { success: true, user: data.user };
+      } else {
+        return {
+          success: false,
+          error: data.error || 'Invalid credentials. Access denied.',
+        };
+      }
+    } catch (e) {
+      console.warn('[Auth] Server login request failed (offline mode):', e);
     }
   }
 
-  setCurrentUser(found);
-  return { success: true, user: found };
+  // 2. Offline Fallback for PWA field salesmen without internet connection:
+  // If previously logged in on this device, allow session continuation.
+  const cachedUser = getCurrentUser();
+  if (
+    cachedUser &&
+    (cachedUser.phone === cleanId || cachedUser.username?.toLowerCase() === cleanId)
+  ) {
+    return { success: true, user: cachedUser };
+  }
+
+  return {
+    success: false,
+    error: 'Offline login requires an existing active session. Please connect to internet to sign in.',
+  };
 };
 
 export const logoutUser = (): void => {
   setCurrentUser(null);
+  setAuthToken(null);
+  if (isBrowser) {
+    document.cookie = 'rushabh_auth_token=; path=/; max-age=0;';
+  }
 };
 
 // TRIPS & BEATS
@@ -348,7 +390,7 @@ export const addDukan = (dukanData: {
   if (isBrowser && navigator.onLine) {
     fetch('/api/dukans', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ dukan: newDukan }),
     }).catch((e) => console.warn('[Storage] Failed to sync new dukan to cloud:', e));
   }
@@ -375,6 +417,7 @@ export const deleteDukan = (dukanId: string): void => {
   if (isBrowser && navigator.onLine) {
     fetch(`/api/dukans/${dukanId}`, {
       method: 'DELETE',
+      headers: { ...getAuthHeaders() },
     }).catch((e) => console.warn('[Storage] Failed to delete dukan from cloud:', e));
   }
 };
@@ -413,7 +456,7 @@ export const updateDukan = (
   if (isBrowser && navigator.onLine) {
     fetch('/api/dukans', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ dukan: updatedDukan }),
     }).catch((e) => console.warn('[Storage] Failed to sync updated dukan to cloud:', e));
   }
@@ -583,7 +626,7 @@ export const addCompany = (newComp: {
   if (isBrowser && navigator.onLine) {
     fetch('/api/companies', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ company: created }),
     }).catch((e) => console.warn('[Storage] Failed to sync new company to cloud:', e));
   }
@@ -616,6 +659,7 @@ export const deleteCompany = (
   if (isBrowser && navigator.onLine) {
     fetch(`/api/companies?id=${companyId}`, {
       method: 'DELETE',
+      headers: { ...getAuthHeaders() },
     }).catch((e) => console.warn('[Storage] Failed to delete company in cloud:', e));
   }
 
@@ -660,7 +704,7 @@ export const syncCompaniesWithBackend = async (): Promise<Company[]> => {
       for (const comp of localNewer) {
         fetch('/api/companies', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify({ company: comp }),
         }).catch(() => {});
       }
@@ -784,7 +828,7 @@ export const addProduct = (newProduct: Omit<Product, 'id'>): Product => {
   if (isBrowser && navigator.onLine) {
     fetch('/api/products', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ product: created }),
     }).catch((e) => console.warn('[Storage] Failed to sync new product to cloud:', e));
   }
@@ -825,7 +869,7 @@ export const updateProduct = (
   if (isBrowser && navigator.onLine && updatedProduct) {
     fetch('/api/products', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ product: updatedProduct }),
     }).catch((e) => console.warn('[Storage] Failed to sync updated product to cloud:', e));
   }
@@ -848,6 +892,7 @@ export const deleteProduct = (productId: string): Product[] => {
   if (isBrowser && navigator.onLine) {
     fetch(`/api/products/${productId}`, {
       method: 'DELETE',
+      headers: { ...getAuthHeaders() },
     }).catch((e) => console.warn('[Storage] Failed to delete product from cloud:', e));
   }
 
@@ -1015,7 +1060,7 @@ export const updateSalesmanOrder = (
   if (isBrowser && navigator.onLine) {
     fetch(`/api/orders/${orderId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ items: params.items, notes: params.notes }),
     }).catch(() => {});
   }
@@ -1054,7 +1099,7 @@ export const updateOrderItems = (
   if (isBrowser && navigator.onLine) {
     fetch(`/api/orders/${orderId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ items: updatedItems }),
     }).catch(() => {});
   }
@@ -1114,6 +1159,7 @@ export const deleteOrder = (orderId: string): Order[] => {
   if (isBrowser && navigator.onLine) {
     fetch(`/api/orders/${encodeURIComponent(targetId)}`, {
       method: 'DELETE',
+      headers: { ...getAuthHeaders() },
     }).catch(() => {});
   }
 
@@ -1131,7 +1177,7 @@ export const syncOrderToBackend = async (order: Order): Promise<void> => {
     try {
       const res = await fetch('/api/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(order),
       });
       if (res.ok) return;
@@ -1164,7 +1210,7 @@ export const flushOfflineOrderQueue = async (): Promise<void> => {
       try {
         const res = await fetch('/api/orders', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify(order),
         });
         if (!res.ok) remaining.push(order);
@@ -1230,7 +1276,10 @@ export const syncOrdersWithBackend = async (): Promise<Order[]> => {
       const unsyncedDeletes = localDeleted.filter((id) => !cloudDeletedIds.includes(id));
       if (unsyncedDeletes.length > 0) {
         unsyncedDeletes.slice(0, 5).forEach((delId) => {
-          fetch(`/api/orders/${encodeURIComponent(delId)}`, { method: 'DELETE' }).catch(() => {});
+          fetch(`/api/orders/${encodeURIComponent(delId)}`, {
+            method: 'DELETE',
+            headers: { ...getAuthHeaders() },
+          }).catch(() => {});
         });
       }
 
@@ -1352,7 +1401,7 @@ export const syncDukansWithBackend = async (): Promise<Dukan[]> => {
       if (localNewerDukans.length > 0) {
         fetch('/api/dukans', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify({ dukans: localNewerDukans }),
         }).catch(() => {});
       }
@@ -1389,7 +1438,7 @@ export const forcePushAllLocalDukansToCloud = async (): Promise<{ success: boole
 
     const res = await fetch('/api/dukans', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ dukans: all }),
     });
 
@@ -1403,7 +1452,7 @@ export const forcePushAllLocalDukansToCloud = async (): Promise<{ success: boole
       try {
         const r = await fetch('/api/dukans', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify({ dukan: d }),
         });
         if (r.ok) ok++;
@@ -1470,7 +1519,7 @@ export const syncProductsWithBackend = async (): Promise<Product[]> => {
       if (localNewerProducts.length > 0) {
         fetch('/api/products', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify({ products: localNewerProducts }),
         }).catch(() => {});
       }
@@ -1499,7 +1548,7 @@ export const forcePushAllLocalProductsToCloud = async (): Promise<{ success: boo
 
     const res = await fetch('/api/products', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ products: all }),
     });
 

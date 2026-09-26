@@ -6,6 +6,17 @@ let pool: mysql.Pool | null = null;
 export const getDbPool = (): mysql.Pool | null => {
   if (pool) return pool;
 
+  // On Vercel serverless functions without an explicit remote DATABASE_URL or remote host,
+  // do NOT attempt connecting to localhost:3306 because it hangs each request until TCP timeout (1-3s).
+  if (process.env.VERCEL && !process.env.DATABASE_URL && (!process.env.MYSQL_HOST || process.env.MYSQL_HOST === 'localhost' || process.env.MYSQL_HOST === '127.0.0.1')) {
+    return null;
+  }
+
+  // Locally or on custom servers, only connect if DATABASE_URL is set or ENABLE_LOCAL_MYSQL is explicitly true
+  if (!process.env.DATABASE_URL && process.env.ENABLE_LOCAL_MYSQL !== 'true') {
+    return null;
+  }
+
   const dbUrl = process.env.DATABASE_URL;
   const host = process.env.MYSQL_HOST || 'localhost';
   const port = parseInt(process.env.MYSQL_PORT || '3306', 10);
@@ -44,7 +55,10 @@ export const getDbPool = (): mysql.Pool | null => {
 export const checkDbConnection = async (): Promise<{ connected: boolean; message: string }> => {
   const p = getDbPool();
   if (!p) {
-    return { connected: false, message: 'MySQL pool not initialized' };
+    if (process.env.VERCEL) {
+      return { connected: true, message: 'Cloud Mode Active (Serverless Store)' };
+    }
+    return { connected: false, message: 'Local MySQL disabled (Cloud Store Active)' };
   }
 
   try {

@@ -106,15 +106,18 @@ export default function TripDukansPage() {
       });
     }
 
-    // Auto-sync with cloud every 5 seconds
+    // Auto-sync with cloud every 30 seconds (paused when tab is hidden)
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
+      }
       syncAllWithBackend().then(() => {
         if (foundTrip) {
           setTrip(getStoredTrips().find((t) => t.id === foundTrip.id) || foundTrip);
           setDukans(getDukansWithDailyStatus(foundTrip.id));
         }
       });
-    }, 5000);
+    }, 30000);
 
     const handleFocus = () => {
       syncAllWithBackend().then(() => {

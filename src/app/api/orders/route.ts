@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCloudOrders, saveCloudOrder } from '@/lib/cloudDb';
+import { verifyApiAuth } from '@/lib/serverAuth';
 import { Order } from '@/types';
 
 // Force dynamic execution for real-time cloud data
@@ -40,6 +41,11 @@ export async function GET() {
 
 // POST /api/orders - Save new field order into Cloud Store
 export async function POST(req: NextRequest) {
+  const auth = verifyApiAuth(req);
+  if (!auth.authorized) {
+    return auth.response;
+  }
+
   try {
     const orderData: Order = await req.json();
 

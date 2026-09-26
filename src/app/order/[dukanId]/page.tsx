@@ -147,6 +147,9 @@ export default function SalesmanOrderTakingPage() {
 
     // Fetch latest products & companies from Cloud
     const refreshData = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
+      }
       syncProductsWithBackend().then((fresh) => {
         if (fresh && fresh.length > 0) {
           applyFreshProducts(fresh);
@@ -160,7 +163,7 @@ export default function SalesmanOrderTakingPage() {
     };
 
     refreshData();
-    const prodInterval = setInterval(refreshData, 4000);
+    const prodInterval = setInterval(refreshData, 45000);
 
     const handleProductsSynced = (e: any) => {
       if (e.detail && Array.isArray(e.detail)) {

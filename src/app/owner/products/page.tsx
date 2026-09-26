@@ -79,7 +79,7 @@ export default function OwnerProductsPage() {
 
   useEffect(() => {
     const user = getCurrentUser();
-    if (!user) {
+    if (!user || user.role !== 'OWNER') {
       router.push('/login');
       return;
     }
@@ -89,6 +89,9 @@ export default function OwnerProductsPage() {
 
     // 1. Fetch fresh products and companies from Cloud
     const loadFreshData = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
+      }
       syncProductsWithBackend().then((fresh) => {
         if (fresh && fresh.length > 0) {
           setProducts(fresh);
@@ -103,8 +106,8 @@ export default function OwnerProductsPage() {
 
     loadFreshData();
 
-    // 2. Poll every 4 seconds for updates from Salesman or Cloud
-    const interval = setInterval(loadFreshData, 4000);
+    // 2. Poll every 45 seconds for updates (paused when tab is hidden)
+    const interval = setInterval(loadFreshData, 45000);
 
     // 3. Listen for immediate sync events
     const handleProductsSync = (e: any) => {

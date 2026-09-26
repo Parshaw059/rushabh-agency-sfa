@@ -21,10 +21,12 @@ export default function LoginPage() {
   const [pin, setPin] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
 
-  const handleLogin = (e?: React.FormEvent) => {
+  const handleLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (loading) return;
     setError(null);
 
     const checkId = identifier.trim();
@@ -40,17 +42,24 @@ export default function LoginPage() {
       return;
     }
 
-    const result = authenticateUser(checkId, checkPin);
+    setLoading(true);
+    try {
+      const result = await authenticateUser(checkId, checkPin);
 
-    if (!result.success || !result.user) {
-      setError(result.error || 'Invalid credentials. Access denied.');
-      return;
-    }
+      if (!result.success || !result.user) {
+        setError(result.error || 'Invalid credentials. Access denied.');
+        setLoading(false);
+        return;
+      }
 
-    if (result.user.role === 'OWNER') {
-      router.push('/owner/orders');
-    } else {
-      router.push('/trips');
+      if (result.user.role === 'OWNER') {
+        router.push('/owner/orders');
+      } else {
+        router.push('/trips');
+      }
+    } catch (err: any) {
+      setError('Authentication failed. Please check network connection.');
+      setLoading(false);
     }
   };
 
@@ -155,10 +164,15 @@ export default function LoginPage() {
           {/* Submit Button */}
           <button
             type="submit"
-            className="w-full py-3 mt-1 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-xs shadow-lg shadow-emerald-700/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+            disabled={loading}
+            className={`w-full py-3 mt-1 rounded-xl text-white font-black text-xs shadow-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+              loading
+                ? 'bg-slate-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 shadow-emerald-700/20'
+            }`}
           >
             <ShieldCheck className="w-4 h-4 text-white" />
-            <span>Verify & Sign In</span>
+            <span>{loading ? 'Verifying Credentials...' : 'Verify & Sign In'}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
 

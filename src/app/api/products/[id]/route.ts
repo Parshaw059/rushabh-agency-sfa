@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { deleteCloudProduct } from '@/lib/cloudDb';
+import { verifyApiAuth } from '@/lib/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +9,11 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = verifyApiAuth(req, 'OWNER');
+  if (!auth.authorized) {
+    return auth.response;
+  }
+
   try {
     const productId = params.id;
     if (!productId) {

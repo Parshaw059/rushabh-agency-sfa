@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { deleteCloudDukan } from '@/lib/cloudDb';
+import { verifyApiAuth } from '@/lib/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +9,11 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = verifyApiAuth(req);
+  if (!auth.authorized) {
+    return auth.response;
+  }
+
   try {
     const dukanId = params.id;
     if (!dukanId) {

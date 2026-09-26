@@ -7,8 +7,6 @@ export const INITIAL_USERS: User[] = [
     role: 'SALESMAN',
     phone: '9825012345',
     username: 'hiren',
-    pin: '1234',
-    password: '1234',
     assignedTripId: 'trip-nandesari',
     assignedTripName: 'Nandesari Beat'
   },
@@ -17,9 +15,7 @@ export const INITIAL_USERS: User[] = [
     name: 'Rushabh Agency (Owner / Admin Desk)',
     role: 'OWNER',
     phone: '8128232377',
-    username: 'owner',
-    pin: '9999',
-    password: '9999'
+    username: 'owner'
   }
 ];
 

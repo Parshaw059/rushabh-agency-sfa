@@ -41,6 +41,9 @@ export default function TripsPage() {
     setDukans(getDukansWithDailyStatus());
 
     const refreshData = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
+      }
       syncAllWithBackend().then(() => {
         setTrips(getStoredTrips());
         setDukans(getDukansWithDailyStatus());
@@ -50,8 +53,8 @@ export default function TripsPage() {
     // Sync cloud orders & dukans immediately
     refreshData();
 
-    // Auto poll every 4s
-    const interval = setInterval(refreshData, 4000);
+    // Auto poll every 30s (paused when tab is hidden to protect rate limits)
+    const interval = setInterval(refreshData, 30000);
 
     const handleSyncEvent = () => {
       setTrips(getStoredTrips());

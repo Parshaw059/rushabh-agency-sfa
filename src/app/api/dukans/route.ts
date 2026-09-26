@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCloudDukans, saveCloudDukan, saveCloudDukansBatch } from '@/lib/cloudDb';
+import { verifyApiAuth } from '@/lib/serverAuth';
 import { Dukan } from '@/types';
 
 // Force dynamic execution for real-time cloud data
@@ -40,6 +41,11 @@ export async function GET() {
 
 // POST /api/dukans - Save one or multiple dukans to Cloud Store
 export async function POST(req: NextRequest) {
+  const auth = verifyApiAuth(req);
+  if (!auth.authorized) {
+    return auth.response;
+  }
+
   try {
     const payload = await req.json();
 
