@@ -3,10 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, User, LogOut, PackageCheck, Shield, Smartphone, RefreshCw, KeyRound } from 'lucide-react';
+import { ArrowLeft, User, LogOut, PackageCheck, Shield, RefreshCw, KeyRound } from 'lucide-react';
 import { User as UserType } from '@/types';
 import { logoutUser, syncAllWithBackend, forcePushAllLocalDukansToCloud, forcePushAllLocalProductsToCloud } from '@/lib/storage';
-import { InstallAppModal } from './InstallAppModal';
 import { ChangeCredentialsModal } from './ChangeCredentialsModal';
 
 interface MobileHeaderProps {
@@ -25,7 +24,6 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   currentUser,
 }) => {
   const router = useRouter();
-  const [showInstallModal, setShowInstallModal] = useState(false);
   const [isChangeCredentialsOpen, setIsChangeCredentialsOpen] = useState(false);
   const [userState, setUserState] = useState<UserType | null>(currentUser || null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -86,17 +84,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   return (
     <>
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md text-slate-800 border-b border-slate-200/90 shadow-xs">
-        {/* Top micro bar */}
-        <div className="bg-gradient-to-r from-emerald-700 via-teal-700 to-emerald-800 px-4 py-1 text-[10px] font-black text-emerald-100 flex items-center justify-between shadow-xs tracking-wider">
-          <span className="truncate">RUSHABH AGENCY • FIELD SFA APP</span>
-          <button
-            onClick={() => setShowInstallModal(true)}
-            className="font-bold bg-white/20 hover:bg-white/30 text-white px-2 py-0.5 rounded text-[9px] flex items-center gap-1 transition-colors"
-          >
-            <Smartphone className="w-2.5 h-2.5" />
-            <span>Install on Phone</span>
-          </button>
-        </div>
+
 
         <div className="px-4 py-2.5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -138,15 +126,6 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
             >
               <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync'}</span>
-            </button>
-
-            <button
-              onClick={() => setShowInstallModal(true)}
-              className="p-1.5 rounded-xl bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/80 transition-colors flex items-center gap-1 text-[10px] font-black"
-              title="Install App on Phone"
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Phone App</span>
             </button>
 
             {userState && (
@@ -207,11 +186,6 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
           </button>
         </div>
       )}
-
-      <InstallAppModal
-        isOpen={showInstallModal}
-        onClose={() => setShowInstallModal(false)}
-      />
 
       <ChangeCredentialsModal
         isOpen={isChangeCredentialsOpen}

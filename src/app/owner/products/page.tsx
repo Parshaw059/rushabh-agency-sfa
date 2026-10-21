@@ -427,43 +427,7 @@ export default function OwnerProductsPage() {
           </div>
         </div>
 
-        {/* Selected Company Action Header (Remove Company Option) */}
-        {selectedCompanyId !== 'all' && (() => {
-          const comp = companies.find((c) => c.id === selectedCompanyId);
-          if (!comp) return null;
-          const compProductsCount = products.filter((p) => p.companyId === comp.id).length;
 
-          return (
-            <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs flex items-center justify-between gap-3 animate-in fade-in">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className={`w-2.5 h-2.5 rounded-full ${comp.badgeColor}`} />
-                  <span className="text-[10px] font-mono font-black text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.2 rounded">
-                    {comp.code}
-                  </span>
-                  <span className="text-[11px] font-bold text-slate-500">
-                    {compProductsCount} Products in Catalog
-                  </span>
-                </div>
-                <h3 className="font-black text-xs text-slate-900 truncate">
-                  {comp.name}
-                </h3>
-                <p className="text-[10px] text-slate-400 truncate">
-                  {comp.tagline || 'Agency Distribution Brand'}
-                </p>
-              </div>
-
-              <button
-                onClick={() => handleInitiateDeleteCompany(comp)}
-                className="px-2.5 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-[11px] font-black flex items-center gap-1 transition-all active:scale-95 flex-shrink-0"
-                title="Remove Company and its products from catalog"
-              >
-                <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                <span>Remove Company</span>
-              </button>
-            </div>
-          );
-        })()}
 
         {/* Empty state if filtered brand has no products */}
         {filtered.length === 0 && (

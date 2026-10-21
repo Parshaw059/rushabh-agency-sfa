@@ -11,9 +11,7 @@ import {
   ArrowRight,
   ShieldCheck,
   CheckCircle2,
-  Smartphone,
 } from 'lucide-react';
-import { InstallAppModal } from '@/components/InstallAppModal';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,7 +20,6 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showInstallModal, setShowInstallModal] = useState(false);
 
   // Auto-redirect if already signed in (0ms instant access!)
   React.useEffect(() => {
@@ -193,15 +190,7 @@ export default function LoginPage() {
           </p>
         </form>
 
-        {/* Install on Mobile App Promo Button */}
-        <button
-          type="button"
-          onClick={() => setShowInstallModal(true)}
-          className="w-full py-2.5 px-4 rounded-2xl bg-white border border-emerald-200/90 hover:bg-emerald-50 text-emerald-800 text-xs font-black shadow-xs flex items-center justify-center gap-2 transition-all"
-        >
-          <Smartphone className="w-4 h-4 text-emerald-600" />
-          <span>📲 Install App on Phone (Free & Zero Latency)</span>
-        </button>
+
       </div>
 
       {/* Footer Info */}
@@ -213,10 +202,7 @@ export default function LoginPage() {
         <span className="font-extrabold text-emerald-700">Rushabh Agency</span>
       </div>
 
-      <InstallAppModal
-        isOpen={showInstallModal}
-        onClose={() => setShowInstallModal(false)}
-      />
+
     </div>
   );
 }
