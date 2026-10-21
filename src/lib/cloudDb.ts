@@ -1,4 +1,4 @@
-import { Order, OrderItemRecord, Dukan, Product, Company } from '@/types';
+import { Order, OrderItemRecord, Dukan, Product, Company, User } from '@/types';
 import {
   getOrdersFromDb,
   insertOrderToDb,
@@ -827,6 +827,143 @@ export const deleteCloudCompany = async (companyId: string): Promise<boolean> =>
     return true;
   } catch (e) {
     return deletedMysql;
+  }
+};
+
+// ==============================================================
+// USERS & CREDENTIALS (CROSS-DEVICE CLOUD STORE)
+// ==============================================================
+
+const getDefaultUsers = (): User[] => [
+  {
+    id: 'user-salesman-hiren',
+    name: 'Hiren Shah (Sales Officer)',
+    role: 'SALESMAN',
+    phone: '9825012345',
+    username: 'hiren',
+    pin: process.env.SALESMAN_PIN || '1234',
+    assignedTripId: 'trip-nandesari',
+    assignedTripName: 'Nandesari Beat',
+  },
+  {
+    id: 'user-owner-1',
+    name: 'Rushabh Agency (Owner / Admin Desk)',
+    role: 'OWNER',
+    phone: '8128232377',
+    username: 'owner',
+    pin: process.env.OWNER_PIN || '9999',
+  },
+];
+
+// Helper: Fetch users from GitHub Gist
+export const getCloudUsers = async (bypassCache: boolean = false): Promise<User[]> => {
+  const defaultUsers = getDefaultUsers();
+  const token = getStoreKey();
+  if (!token) return defaultUsers;
+
+  const files = await getRawGistFiles(bypassCache);
+  const usersContent = files['users.json'];
+
+  if (!usersContent) {
+    return defaultUsers;
+  }
+
+  try {
+    const parsed = JSON.parse(usersContent);
+    if (!Array.isArray(parsed) || parsed.length === 0) return defaultUsers;
+
+    // Merge parsed users with default structure to preserve roles/IDs
+    const map = new Map<string, User>();
+    defaultUsers.forEach((u) => map.set(u.id, u));
+    parsed.forEach((u) => {
+      if (u && u.id) {
+        const base = map.get(u.id) || u;
+        map.set(u.id, { ...base, ...u });
+      }
+    });
+
+    return Array.from(map.values());
+  } catch (e) {
+    return defaultUsers;
+  }
+};
+
+// Helper: Save users to GitHub Gist
+export const saveCloudUsers = async (users: User[]): Promise<boolean> => {
+  const token = getStoreKey();
+  if (!token) {
+    console.warn('[CloudDb] Warning: CLOUD_STORE_KEY is not set.');
+    return false;
+  }
+
+  try {
+    gistFilesCache = null; // Invalidate unified cache on write
+
+    const filesPayload: any = {
+      'users.json': {
+        content: JSON.stringify(users, null, 2),
+      },
+    };
+
+    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `token ${token}`,
+        'User-Agent': 'Rushabh-Agency-SFA',
+        'Content-Type': 'application/json',
+        Accept: 'application/vnd.github.v3+json',
+      },
+      body: JSON.stringify({
+        files: filesPayload,
+      }),
+    });
+
+    return res.ok;
+  } catch (err) {
+    console.warn('[CloudDb] Gist write exception (users):', err);
+    return false;
+  }
+};
+
+// Update credentials for a specific user
+export const updateCloudUserCredentials = async (
+  userId: string,
+  newUsername?: string,
+  newPin?: string,
+  newName?: string
+): Promise<{ success: boolean; user?: User; error?: string }> => {
+  try {
+    const currentUsers = await getCloudUsers(true);
+    const userIndex = currentUsers.findIndex(
+      (u) => u.id === userId || (u.role && u.role.toLowerCase() === userId.toLowerCase())
+    );
+
+    if (userIndex === -1) {
+      return { success: false, error: 'User account not found' };
+    }
+
+    const existingUser = currentUsers[userIndex];
+    const updatedUser: User = {
+      ...existingUser,
+      username: newUsername ? newUsername.trim() : existingUser.username,
+      name: newName ? newName.trim() : existingUser.name,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (newPin && newPin.trim()) {
+      updatedUser.pin = newPin.trim();
+      updatedUser.password = newPin.trim();
+    }
+
+    currentUsers[userIndex] = updatedUser;
+    const saved = await saveCloudUsers(currentUsers);
+    if (!saved) {
+      return { success: false, error: 'Failed to write updated credentials to Cloud Store' };
+    }
+
+    return { success: true, user: updatedUser };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Error updating user credentials' };
   }
 };
 

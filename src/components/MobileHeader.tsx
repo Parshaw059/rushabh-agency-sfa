@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, User, LogOut, PackageCheck, Shield, Smartphone, RefreshCw } from 'lucide-react';
+import { ArrowLeft, User, LogOut, PackageCheck, Shield, Smartphone, RefreshCw, KeyRound } from 'lucide-react';
 import { User as UserType } from '@/types';
 import { logoutUser, syncAllWithBackend, forcePushAllLocalDukansToCloud, forcePushAllLocalProductsToCloud } from '@/lib/storage';
 import { InstallAppModal } from './InstallAppModal';
+import { ChangeCredentialsModal } from './ChangeCredentialsModal';
 
 interface MobileHeaderProps {
   title: string;
@@ -25,8 +26,24 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
 }) => {
   const router = useRouter();
   const [showInstallModal, setShowInstallModal] = useState(false);
+  const [isChangeCredentialsOpen, setIsChangeCredentialsOpen] = useState(false);
+  const [userState, setUserState] = useState<UserType | null>(currentUser || null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncToast, setSyncToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  useEffect(() => {
+    setUserState(currentUser || null);
+  }, [currentUser]);
+
+  useEffect(() => {
+    const handleUserUpdated = (e: any) => {
+      if (e.detail) {
+        setUserState(e.detail);
+      }
+    };
+    window.addEventListener('rushabh-user-updated', handleUserUpdated);
+    return () => window.removeEventListener('rushabh-user-updated', handleUserUpdated);
+  }, []);
 
   const handleManualSync = async () => {
     setIsSyncing(true);
@@ -132,16 +149,31 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
               <span className="hidden sm:inline">Phone App</span>
             </button>
 
-            {currentUser && (
+            {userState && (
               <>
-                <div className="text-right hidden xs:block">
+                {/* Change Username & Password Key Button */}
+                <button
+                  onClick={() => setIsChangeCredentialsOpen(true)}
+                  className="p-1.5 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200/90 transition-all flex items-center gap-1 text-[10px] font-bold active:scale-95"
+                  title="Change Username & Security PIN / Password"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="hidden md:inline">Credentials</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsChangeCredentialsOpen(true)}
+                  className="text-right hidden xs:block cursor-pointer hover:opacity-80 transition-opacity"
+                  title="Click to view account security or change credentials"
+                >
                   <span className="text-[11px] font-bold text-slate-800 block leading-tight truncate max-w-[105px]">
-                    {currentUser.name.split(' ')[0]}
+                    {userState.name.split(' ')[0]}
                   </span>
                   <span className="text-[9px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-1.5 py-0.2 rounded inline-block mt-0.5">
-                    {currentUser.role}
+                    {userState.role}
                   </span>
-                </div>
+                </button>
                 <button
                   onClick={handleLogout}
                   className="p-1.5 rounded-xl bg-slate-100 text-slate-500 hover:text-red-600 hover:bg-red-50 border border-slate-200/80 transition-colors"
@@ -179,6 +211,13 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
       <InstallAppModal
         isOpen={showInstallModal}
         onClose={() => setShowInstallModal(false)}
+      />
+
+      <ChangeCredentialsModal
+        isOpen={isChangeCredentialsOpen}
+        onClose={() => setIsChangeCredentialsOpen(false)}
+        currentUser={userState}
+        onCredentialsUpdated={(updated) => setUserState(updated)}
       />
     </>
   );

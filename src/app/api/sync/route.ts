@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getCloudOrders, getCloudDukans, getCloudProducts, getCloudCompanies } from '@/lib/cloudDb';
+import {
+  getCloudOrders,
+  getCloudDukans,
+  getCloudProducts,
+  getCloudCompanies,
+  getCloudUsers,
+} from '@/lib/cloudDb';
 
 // Force dynamic execution for real-time cloud data
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// GET /api/sync - Unified single round-trip fetch for all entities (Orders, Dukans, Products, Companies)
+// GET /api/sync - Unified single round-trip fetch for all entities (Orders, Dukans, Products, Companies, Users)
 export async function GET() {
   try {
     const [
@@ -13,12 +19,24 @@ export async function GET() {
       dukansRes,
       productsRes,
       companiesRes,
+      usersRes,
     ] = await Promise.all([
       getCloudOrders(),
       getCloudDukans(),
       getCloudProducts(),
       getCloudCompanies(),
+      getCloudUsers(),
     ]);
+
+    const safeUsers = usersRes.map((u) => ({
+      id: u.id,
+      name: u.name,
+      role: u.role,
+      phone: u.phone,
+      username: u.username,
+      assignedTripId: u.assignedTripId,
+      assignedTripName: u.assignedTripName,
+    }));
 
     return NextResponse.json(
       {
@@ -31,6 +49,7 @@ export async function GET() {
         deletedProductIds: productsRes.deletedIds || [],
         companies: companiesRes.companies || [],
         deletedCompanyIds: companiesRes.deletedIds || [],
+        users: safeUsers,
         timestamp: new Date().toISOString(),
       },
       {

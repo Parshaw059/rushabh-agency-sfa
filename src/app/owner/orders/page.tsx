@@ -19,6 +19,7 @@ import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPd
 import { MobileHeader } from '@/components/MobileHeader';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { OrderSlipModal } from '@/components/OrderSlipModal';
+import { ChangeCredentialsModal } from '@/components/ChangeCredentialsModal';
 import {
   FileSpreadsheet,
   Download,
@@ -38,11 +39,13 @@ import {
   PhoneCall,
   Store,
   MapPin,
+  KeyRound,
 } from 'lucide-react';
 
 export default function OwnerOrdersPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isChangeCredentialsOpen, setIsChangeCredentialsOpen] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [dukans, setDukans] = useState<DukanDailyStatus[]>([]);
   const [allTrips, setAllTrips] = useState<Trip[]>([]);
@@ -219,13 +222,24 @@ export default function OwnerOrdersPage() {
               </h2>
             </div>
 
-            <button
-              onClick={handleExportWdms}
-              className="py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-700/20 active:scale-[0.98]"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>WDMS Export</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsChangeCredentialsOpen(true)}
+                className="py-2 px-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs border border-purple-200/80 flex items-center gap-1 active:scale-[0.98] transition-all"
+                title="Change Owner Username & Security PIN"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-purple-600" />
+                <span className="hidden sm:inline">Change Password</span>
+              </button>
+
+              <button
+                onClick={handleExportWdms}
+                className="py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-700/20 active:scale-[0.98]"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>WDMS Export</span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-center">
@@ -686,6 +700,13 @@ export default function OwnerOrdersPage() {
       )}
 
       <MobileBottomNav currentUser={currentUser} />
+
+      <ChangeCredentialsModal
+        isOpen={isChangeCredentialsOpen}
+        onClose={() => setIsChangeCredentialsOpen(false)}
+        currentUser={currentUser}
+        onCredentialsUpdated={(updated) => setCurrentUser(updated)}
+      />
     </div>
   );
 }

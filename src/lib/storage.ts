@@ -118,34 +118,50 @@ export const authenticateUser = async (
   const cleanId = identifier.trim().toLowerCase();
   const cleanPin = (secretPin || '').trim();
 
-  // 1. Instant 0ms verification via salted SHA-256 hash (never exposes plaintext PIN in bundle)
+  // 1. Instant 0ms verification via stored users or salted SHA-256 hash
   const pinHash = await fastSha256(`rushabh_2026:${cleanPin}`);
   let matchedUser: User | null = null;
 
-  if (
-    (cleanId === 'owner' || cleanId === '8128232377' || cleanId === 'admin') &&
-    pinHash === HASH_OWNER
-  ) {
-    matchedUser = {
-      id: 'user-owner-1',
-      name: 'Rushabh Agency (Owner / Admin Desk)',
-      role: 'OWNER',
-      phone: '8128232377',
-      username: 'owner',
-    };
-  } else if (
-    (cleanId === 'hiren' || cleanId === '9825012345' || cleanId === 'salesman') &&
-    pinHash === HASH_SALESMAN
-  ) {
-    matchedUser = {
-      id: 'user-salesman-hiren',
-      name: 'Hiren Shah (Sales Officer)',
-      role: 'SALESMAN',
-      phone: '9825012345',
-      username: 'hiren',
-      assignedTripId: 'trip-nandesari',
-      assignedTripName: 'Nandesari Beat',
-    };
+  // Check stored custom credentials from localStorage first
+  const storedUsers = getStoredUsers();
+  for (const u of storedUsers) {
+    const uUsername = (u.username || '').trim().toLowerCase();
+    const uPhone = (u.phone || '').trim().toLowerCase();
+    const isMatch = (uUsername && cleanId === uUsername) || (uPhone && cleanId === uPhone);
+    const expectedPin = u.pin || u.password;
+    if (isMatch && expectedPin && cleanPin === expectedPin) {
+      matchedUser = u;
+      break;
+    }
+  }
+
+  // Default hash verification if not customized locally
+  if (!matchedUser) {
+    if (
+      (cleanId === 'owner' || cleanId === '8128232377' || cleanId === 'admin') &&
+      pinHash === HASH_OWNER
+    ) {
+      matchedUser = {
+        id: 'user-owner-1',
+        name: 'Rushabh Agency (Owner / Admin Desk)',
+        role: 'OWNER',
+        phone: '8128232377',
+        username: 'owner',
+      };
+    } else if (
+      (cleanId === 'hiren' || cleanId === '9825012345' || cleanId === 'salesman') &&
+      pinHash === HASH_SALESMAN
+    ) {
+      matchedUser = {
+        id: 'user-salesman-hiren',
+        name: 'Hiren Shah (Sales Officer)',
+        role: 'SALESMAN',
+        phone: '9825012345',
+        username: 'hiren',
+        assignedTripId: 'trip-nandesari',
+        assignedTripName: 'Nandesari Beat',
+      };
+    }
   }
 
   if (matchedUser) {
@@ -171,7 +187,7 @@ export const authenticateUser = async (
     return { success: true, user: matchedUser };
   }
 
-  // 2. Server API fallback (if custom PIN was updated in Vercel environment variables)
+  // 2. Server API fallback (cloud store check for updated credentials across devices)
   if (isBrowser && navigator.onLine) {
     try {
       const res = await fetch('/api/auth/login', {
@@ -185,6 +201,16 @@ export const authenticateUser = async (
         if (data.token) {
           setAuthToken(data.token);
         }
+        // Save to stored users for instant future 0ms login
+        const users = getStoredUsers();
+        const idx = users.findIndex((u) => u.id === data.user.id || u.role === data.user.role);
+        if (idx >= 0) {
+          users[idx] = { ...users[idx], ...data.user, pin: cleanPin, password: cleanPin };
+        } else {
+          users.push({ ...data.user, pin: cleanPin, password: cleanPin });
+        }
+        localStorage.setItem(USERS_KEY, JSON.stringify(users));
+
         return { success: true, user: data.user };
       }
     } catch (e) {}
@@ -203,6 +229,67 @@ export const authenticateUser = async (
     success: false,
     error: 'Incorrect Mobile Number or Security PIN. Access denied.',
   };
+};
+
+export const updateUserCredentials = async (data: {
+  currentPin: string;
+  newUsername?: string;
+  newPin?: string;
+  newName?: string;
+}): Promise<{ success: boolean; user?: User; error?: string }> => {
+  if (!isBrowser) {
+    return { success: false, error: 'Cannot update credentials outside browser' };
+  }
+
+  try {
+    const token = getAuthToken();
+    const res = await fetch('/api/auth/update-credentials', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: token ? `Bearer ${token}` : '',
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await res.json();
+    if (!res.ok || !result.success) {
+      return { success: false, error: result.error || 'Failed to update credentials' };
+    }
+
+    if (result.user) {
+      // Update local storage
+      const storedUsers = getStoredUsers();
+      const idx = storedUsers.findIndex(
+        (u) => u.id === result.user.id || u.role === result.user.role
+      );
+      const updatedUser: User = {
+        ...(idx >= 0 ? storedUsers[idx] : {}),
+        ...result.user,
+      };
+      if (data.newPin) {
+        updatedUser.pin = data.newPin.trim();
+        updatedUser.password = data.newPin.trim();
+      }
+      if (idx >= 0) {
+        storedUsers[idx] = updatedUser;
+      } else {
+        storedUsers.push(updatedUser);
+      }
+      localStorage.setItem(USERS_KEY, JSON.stringify(storedUsers));
+      setCurrentUser(result.user);
+
+      if (result.token) {
+        setAuthToken(result.token);
+      }
+
+      window.dispatchEvent(new CustomEvent('rushabh-user-updated', { detail: result.user }));
+    }
+
+    return { success: true, user: result.user };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Network error updating credentials' };
+  }
 };
 
 export const logoutUser = (): void => {

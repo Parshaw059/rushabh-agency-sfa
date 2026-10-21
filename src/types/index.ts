@@ -8,8 +8,10 @@ export interface User {
   username?: string;
   pin?: string;
   password?: string;
+  pinHash?: string;
   assignedTripId?: string;
   assignedTripName?: string;
+  updatedAt?: string;
 }
 
 export interface Trip {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { signToken } from '@/lib/serverAuth';
+import { getCloudUsers } from '@/lib/cloudDb';
 import { User } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -19,58 +20,68 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const OWNER_PIN = process.env.OWNER_PIN || '9999';
-    const SALESMAN_PIN = process.env.SALESMAN_PIN || '1234';
+    const OWNER_DEFAULT_PIN = process.env.OWNER_PIN || '9999';
+    const SALESMAN_DEFAULT_PIN = process.env.SALESMAN_PIN || '1234';
 
-    let user: User | null = null;
+    // Fetch live users from cloud store (includes custom updated credentials)
+    const cloudUsers = await getCloudUsers();
+    let matchedUser: User | null = null;
 
-    // Check OWNER account credentials
-    if (
-      (cleanId === 'owner' || cleanId === '8128232377' || cleanId === 'admin') &&
-      cleanPin === OWNER_PIN
-    ) {
-      user = {
-        id: 'user-owner-1',
-        name: 'Rushabh Agency (Owner / Admin Desk)',
-        role: 'OWNER',
-        phone: '8128232377',
-        username: 'owner',
-      };
+    for (const u of cloudUsers) {
+      const uUsername = (u.username || '').trim().toLowerCase();
+      const uPhone = (u.phone || '').trim().toLowerCase();
+      const uId = (u.id || '').trim().toLowerCase();
+      const expectedPin = u.pin || u.password || (u.role === 'OWNER' ? OWNER_DEFAULT_PIN : SALESMAN_DEFAULT_PIN);
+
+      // Check identifier match:
+      let isIdMatch = false;
+      if (uUsername && cleanId === uUsername) isIdMatch = true;
+      if (uPhone && cleanId === uPhone) isIdMatch = true;
+      if (uId && cleanId === uId) isIdMatch = true;
+
+      // Role aliases
+      if (u.role === 'OWNER' && (cleanId === 'owner' || cleanId === 'admin' || cleanId === '8128232377')) {
+        isIdMatch = true;
+      }
+      if (u.role === 'SALESMAN' && (cleanId === 'hiren' || cleanId === 'salesman' || cleanId === '9825012345')) {
+        isIdMatch = true;
+      }
+
+      if (isIdMatch && cleanPin === expectedPin) {
+        matchedUser = u;
+        break;
+      }
     }
-    // Check SALESMAN account credentials
-    else if (
-      (cleanId === 'hiren' || cleanId === '9825012345' || cleanId === 'salesman') &&
-      cleanPin === SALESMAN_PIN
-    ) {
-      user = {
-        id: 'user-salesman-hiren',
-        name: 'Hiren Shah (Sales Officer)',
-        role: 'SALESMAN',
-        phone: '9825012345',
-        username: 'hiren',
-        assignedTripId: 'trip-nandesari',
-        assignedTripName: 'Nandesari Beat',
-      };
-    }
 
-    if (!user) {
+    if (!matchedUser) {
       return NextResponse.json(
         { success: false, error: 'Invalid credentials. Access denied.' },
         { status: 401 }
       );
     }
 
+    // Return safe user without exposing plain PIN
+    const safeUser: User = {
+      id: matchedUser.id,
+      name: matchedUser.name,
+      role: matchedUser.role,
+      phone: matchedUser.phone,
+      username: matchedUser.username,
+      assignedTripId: matchedUser.assignedTripId,
+      assignedTripName: matchedUser.assignedTripName,
+    };
+
     // Generate signed session token valid for 30 days
     const token = signToken({
-      userId: user.id,
-      name: user.name,
-      role: user.role,
-      phone: user.phone,
+      userId: safeUser.id,
+      name: safeUser.name,
+      role: safeUser.role,
+      phone: safeUser.phone,
     });
 
     const response = NextResponse.json({
       success: true,
-      user,
+      user: safeUser,
       token,
       message: 'Login successful',
     });

@@ -13,6 +13,7 @@ import {
 } from '@/lib/storage';
 import { MobileHeader } from '@/components/MobileHeader';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
+import { ChangeCredentialsModal } from '@/components/ChangeCredentialsModal';
 import {
   MapPin,
   Store,
@@ -22,11 +23,13 @@ import {
   Navigation,
   Sparkles,
   TrendingUp,
+  KeyRound,
 } from 'lucide-react';
 
 export default function TripsPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isChangeCredentialsOpen, setIsChangeCredentialsOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [dukans, setDukans] = useState<DukanDailyStatus[]>([]);
 
@@ -222,9 +225,44 @@ export default function TripsPage() {
             );
           })}
         </div>
+
+        {/* Salesman Account Credentials & Security Card */}
+        <div className="bg-white rounded-3xl p-4 border border-slate-200/90 shadow-xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center flex-shrink-0 border border-emerald-200/60">
+              <KeyRound className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[10px] uppercase font-black text-emerald-800 tracking-wider block">
+                Account Security
+              </span>
+              <p className="text-xs font-bold text-slate-800 truncate">
+                @{currentUser.username || 'hiren'} • {currentUser.name}
+              </p>
+              <p className="text-[10px] text-slate-400">
+                Update your login username and security PIN anytime
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setIsChangeCredentialsOpen(true)}
+            className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 font-bold text-xs border border-slate-200/90 transition-colors flex items-center gap-1.5 flex-shrink-0 active:scale-95"
+          >
+            <KeyRound className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Change</span>
+          </button>
+        </div>
       </main>
 
       <MobileBottomNav currentUser={currentUser} />
+
+      <ChangeCredentialsModal
+        isOpen={isChangeCredentialsOpen}
+        onClose={() => setIsChangeCredentialsOpen(false)}
+        currentUser={currentUser}
+        onCredentialsUpdated={(updated) => setCurrentUser(updated)}
+      />
     </div>
   );
 }
