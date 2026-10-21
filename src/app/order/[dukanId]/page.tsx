@@ -432,23 +432,52 @@ export default function SalesmanOrderTakingPage() {
 
   // Active Company
   const activeCompany = useMemo(() => {
+    if (searchQuery.trim()) {
+      return {
+        id: "all",
+        name: "All Brands Search",
+        code: "ALL",
+        badgeColor: "bg-emerald-500",
+        tagline: "Searching across all companies",
+        productCount: products.length,
+      };
+    }
+    if (selectedCompanyId === "all") {
+      return {
+        id: "all",
+        name: "All Brands Catalog",
+        code: "ALL",
+        badgeColor: "bg-emerald-500",
+        tagline: "All agency products",
+        productCount: products.length,
+      };
+    }
     return companies.find((c) => c.id === selectedCompanyId) || companies[0] || INITIAL_COMPANIES[0];
-  }, [companies, selectedCompanyId]);
+  }, [companies, selectedCompanyId, searchQuery, products.length]);
 
-  // Products filtered by selected company & search query
+  // Products filtered by selected company & search query (searches ALL companies simultaneously)
   const displayedProducts = useMemo(() => {
-    return products.filter((p) => {
-      if (p.companyId !== selectedCompanyId) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
+    const q = searchQuery.trim().toLowerCase();
+
+    // When searching, find items from ALL companies at once!
+    if (q) {
+      return products.filter((p) => {
         return (
           p.name.toLowerCase().includes(q) ||
           p.wdmsCode.toLowerCase().includes(q) ||
-          p.category.toLowerCase().includes(q)
+          p.category.toLowerCase().includes(q) ||
+          (p.companyName && p.companyName.toLowerCase().includes(q)) ||
+          (p.packSize && p.packSize.toLowerCase().includes(q))
         );
-      }
-      return true;
-    });
+      });
+    }
+
+    // When not searching, filter by selected company or show all
+    if (selectedCompanyId === "all") {
+      return products;
+    }
+
+    return products.filter((p) => p.companyId === selectedCompanyId);
   }, [products, selectedCompanyId, searchQuery]);
 
   // Cart Metrics
@@ -515,20 +544,40 @@ export default function SalesmanOrderTakingPage() {
           </div>
         )}
 
-        {/* FMCG Company Selector Bar with + Add Comp at the last */}
+        {/* FMCG Company Selector Bar with All Brands + Companies + Add Comp */}
         <div className="bg-white p-2.5 rounded-2xl border border-slate-200/90 shadow-xs space-y-2">
           <div className="flex items-center justify-between px-1">
             <span className="text-[11px] font-black text-slate-600 uppercase tracking-wider">
-              Select Company / Brand ({companies.length} Brands):
+              Filter by Brand ({companies.length} Brands):
             </span>
             <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-bold border border-emerald-200/80">
-              {companies.length} Brands
+              {products.length} Total SKUs
             </span>
           </div>
 
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none items-center">
+            {/* All Brands Tab */}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCompanyId("all");
+                setSearchQuery("");
+              }}
+              className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 border shadow-2xs ${
+                selectedCompanyId === "all" && !searchQuery.trim()
+                  ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-transparent shadow-md shadow-emerald-700/20 ring-2 ring-emerald-400/30"
+                  : "bg-slate-50 text-slate-700 border-slate-200/90 hover:bg-emerald-50/50"
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>All Brands</span>
+              <span className="text-[9px] font-black opacity-80">
+                ({products.length})
+              </span>
+            </button>
+
             {companies.map((comp) => {
-              const isSelected = selectedCompanyId === comp.id;
+              const isSelected = selectedCompanyId === comp.id && !searchQuery.trim();
               const inCartCount = cartItems
                 .filter((item) => item.product.companyId === comp.id)
                 .reduce((sum, item) => sum + item.totalUnits, 0);
@@ -538,16 +587,16 @@ export default function SalesmanOrderTakingPage() {
                   key={comp.id}
                   onClick={() => {
                     setSelectedCompanyId(comp.id);
-                    setSearchQuery('');
+                    setSearchQuery("");
                   }}
                   className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 border shadow-2xs ${
                     isSelected
-                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-transparent shadow-md shadow-emerald-700/20 ring-2 ring-emerald-400/30'
-                      : 'bg-slate-50 text-slate-700 border-slate-200/90 hover:bg-emerald-50/50'
+                      ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-transparent shadow-md shadow-emerald-700/20 ring-2 ring-emerald-400/30"
+                      : "bg-slate-50 text-slate-700 border-slate-200/90 hover:bg-emerald-50/50"
                   }`}
                 >
                   <span className={`w-2.5 h-2.5 rounded-full ${comp.badgeColor}`} />
-                  <span>{comp.name.split(' ')[0]}</span>
+                  <span>{comp.name.split(" ")[0]}</span>
                   {inCartCount > 0 && (
                     <span className="bg-white text-emerald-800 text-[9px] font-black px-1.5 py-0.2 rounded-full shadow-2xs">
                       {inCartCount}
@@ -583,24 +632,24 @@ export default function SalesmanOrderTakingPage() {
         {/* Active Company & Search Bar */}
         <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm space-y-2.5">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className={`w-3 h-3 rounded-full ${activeCompany.badgeColor}`} />
-              <h3 className="font-black text-slate-900 text-sm">
-                {activeCompany.name}
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`w-3 h-3 rounded-full flex-shrink-0 ${searchQuery.trim() ? "bg-emerald-500 ring-2 ring-emerald-200" : activeCompany.badgeColor}`} />
+              <h3 className="font-black text-slate-900 text-sm truncate">
+                {searchQuery.trim() ? `Search: "${searchQuery.trim()}"` : activeCompany.name}
               </h3>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-slate-400 font-bold">
-                {displayedProducts.length} Items
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+                {displayedProducts.length} {displayedProducts.length === 1 ? "Item" : "Items"}
               </span>
               <button
                 type="button"
                 onClick={() => {
-                  setNewCompanyId(activeCompany.id);
+                  setNewCompanyId(activeCompany.id === "all" ? (companies[0]?.id || "dabur") : activeCompany.id);
                   setIsAddSkuModalOpen(true);
                 }}
                 className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] flex items-center gap-1 shadow-xs transition-colors"
-                title="Add new SKU for this company"
+                title="Add new SKU to catalog"
               >
                 <Plus className="w-3 h-3" />
                 <span>Add SKU</span>
@@ -614,19 +663,55 @@ export default function SalesmanOrderTakingPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={`Search ${activeCompany.name.split(' ')[0]} products...`}
-              className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              placeholder="Search items from all companies (e.g. Parachute, Red, Balm)..."
+              className="w-full pl-9 pr-8 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200"
+                title="Clear Search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
+
+          {searchQuery.trim() && (
+            <div className="flex items-center justify-between text-[11px] bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-lg border border-emerald-200 animate-in fade-in">
+              <span className="font-bold flex items-center gap-1">
+                <span>⚡</span> Searching across all {companies.length} brands at once ({displayedProducts.length} matched)
+              </span>
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="font-black text-emerald-900 hover:underline ml-2"
+              >
+                Clear
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Product Cards List */}
         <div className="space-y-3">
           {displayedProducts.length === 0 ? (
-            <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center">
-              <p className="text-slate-500 text-xs font-bold">
-                No products found in this company matching &quot;{searchQuery}&quot;.
+            <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-2">
+              <p className="text-slate-700 text-xs font-bold">
+                {searchQuery.trim()
+                  ? `No products found across any company matching "${searchQuery}".`
+                  : "No products found in this category."}
               </p>
+              {searchQuery.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-black hover:bg-emerald-100"
+                >
+                  Clear Search
+                </button>
+              )}
             </div>
           ) : (
             displayedProducts.map((product) => {
@@ -648,7 +733,10 @@ export default function SalesmanOrderTakingPage() {
                   {/* Item Header */}
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="flex items-center gap-1.5 mb-1">
+                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                        <span className="text-[10px] font-black text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.2 rounded shadow-2xs">
+                          {product.companyName}
+                        </span>
                         <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded border border-slate-200">
                           {product.wdmsCode}
                         </span>
