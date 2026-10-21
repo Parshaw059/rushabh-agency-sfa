@@ -40,6 +40,7 @@ import {
   Store,
   MapPin,
   KeyRound,
+  TrendingUp,
 } from 'lucide-react';
 
 export default function OwnerOrdersPage() {
@@ -181,7 +182,29 @@ export default function OwnerOrdersPage() {
     ])
   );
 
-  const todayOrdersCount = orders.filter((o) => isDateToday(o.createdAt)).length;
+  // Today's Live KPI Metrics
+  const todayOrders = orders.filter((o) => isDateToday(o.createdAt));
+  const todayOrdersCount = todayOrders.length;
+  const todayBookingValue = todayOrders.reduce((sum, o) => sum + o.totalMrpValue, 0);
+  const todayBoxesCount = todayOrders.reduce((sum, o) => sum + o.totalBoxes, 0);
+  const todayUnitsCount = todayOrders.reduce((sum, o) => sum + o.totalUnits, 0);
+
+  // Yesterday comparison for micro-trend badge
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().substring(0, 10);
+  const yesterdayOrders = orders.filter((o) => o.createdAt.startsWith(yesterdayStr));
+  const yesterdayBookingValue = yesterdayOrders.reduce((sum, o) => sum + o.totalMrpValue, 0);
+
+  let trendPercent = 0;
+  let isPositiveTrend = true;
+  if (yesterdayBookingValue > 0) {
+    trendPercent = Math.round(((todayBookingValue - yesterdayBookingValue) / yesterdayBookingValue) * 100);
+    isPositiveTrend = trendPercent >= 0;
+  } else if (todayBookingValue > 0) {
+    trendPercent = 100;
+    isPositiveTrend = true;
+  }
 
   const filteredOrders = orders.filter((o) => {
     if (dateFilter === 'today' && !isDateToday(o.createdAt)) return false;
@@ -210,6 +233,97 @@ export default function OwnerOrdersPage() {
       />
 
       <main className="p-4 space-y-4">
+        {/* Live KPI Metric Card: Today's Booking Value with Micro-Trend Badge */}
+        <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 rounded-3xl p-5 text-white shadow-xl border border-emerald-500/20 relative overflow-hidden">
+          {/* Ambient Decorative Glow */}
+          <div className="absolute -right-10 -top-10 w-48 h-48 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-teal-500/15 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="relative z-10 space-y-3.5">
+            {/* Top row: Label + Live Pulsing Dot + Micro-Trend Badge */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-lg shadow-inner">
+                  💰
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                      TODAY'S BOOKING VALUE
+                    </span>
+                    <span className="relative flex h-2 w-2" title="Live Cloud Sync Active">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span className="text-[9px] font-black text-emerald-400/90 bg-emerald-950/70 border border-emerald-500/30 px-1.5 py-0.2 rounded">
+                      LIVE
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 font-medium">
+                    Rushabh Agency Field Orders
+                  </p>
+                </div>
+              </div>
+
+              {/* Micro-Trend Badge */}
+              <div
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border backdrop-blur-md shadow-xs ${
+                  todayOrders.length > 0
+                    ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
+                    : 'bg-slate-800/80 border-slate-700 text-slate-400'
+                }`}
+              >
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                <span>
+                  {todayOrders.length > 0
+                    ? `${isPositiveTrend ? '+' : ''}${trendPercent}% vs yesterday • ${todayOrders.length} ${todayOrders.length === 1 ? 'Bill' : 'Bills'}`
+                    : 'Awaiting Today\'s Bills'}
+                </span>
+              </div>
+            </div>
+
+            {/* Main Value Display */}
+            <div className="pt-1">
+              <div className="flex items-baseline gap-2.5 flex-wrap">
+                <span className="text-3xl sm:text-4xl font-black tracking-tight text-white font-mono">
+                  ₹{todayBookingValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                </span>
+                <span className="text-[11px] font-bold text-emerald-300/80 uppercase tracking-wider bg-white/10 px-2 py-0.5 rounded-md border border-white/10">
+                  MRP Gross
+                </span>
+              </div>
+            </div>
+
+            {/* Micro Stats Grid inside the card */}
+            <div className="grid grid-cols-3 gap-2 pt-3 border-t border-white/10">
+              <div className="bg-white/5 backdrop-blur-xs rounded-2xl p-2.5 border border-white/10 text-center">
+                <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-wider">
+                  Today's Bills
+                </span>
+                <span className="text-sm font-black text-white mt-0.5 block">
+                  {todayOrders.length} Orders
+                </span>
+              </div>
+              <div className="bg-white/5 backdrop-blur-xs rounded-2xl p-2.5 border border-white/10 text-center">
+                <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-wider">
+                  Total Peti (Boxes)
+                </span>
+                <span className="text-sm font-black text-emerald-300 mt-0.5 block">
+                  {todayBoxesCount} Box
+                </span>
+              </div>
+              <div className="bg-white/5 backdrop-blur-xs rounded-2xl p-2.5 border border-white/10 text-center">
+                <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-wider">
+                  Avg Bill Size
+                </span>
+                <span className="text-sm font-black text-teal-300 mt-0.5 block">
+                  ₹{todayOrders.length > 0 ? Math.round(todayBookingValue / todayOrders.length).toLocaleString('en-IN') : 0}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Export & Summary Bar */}
         <div className="bg-white rounded-3xl p-4 border border-slate-200/90 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
