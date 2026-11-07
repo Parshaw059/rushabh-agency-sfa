@@ -333,33 +333,20 @@ const saveDukansToGist = async (dukans: Dukan[], deletedIds?: string[]): Promise
 
 // Master Function: Get all dukans across devices
 export const getCloudDukans = async (): Promise<{ dukans: Dukan[]; deletedIds: string[]; source: string }> => {
-  // All obsolete dummy placeholder IDs for Dashrath-Ranoli that should NEVER appear
-  const dummyDsrIds = [
-    'duk-dsr-ambica', 'duk-dsr-jalaram', 'duk-dsr-chamunda', 'duk-dsr-mahalaxmi',
-    'duk-dsr-patel', 'duk-dsr-gayatri', 'duk-dsr-shivam', 'duk-dsr-maruti',
-    'duk-dsr-krishna', 'duk-dsr-ashapura', 'duk-dsr-khodiyar', 'duk-dsr-uma',
-    'duk-dsr-904', 'duk-dsr-901', 'duk-dsr-902', 'duk-dsr-903'
-  ];
-
   // 1. Try MySQL if configured
   try {
     const mysqlDukans = await getDukansFromDb();
     if (mysqlDukans && mysqlDukans.length > 0) {
-      const cleanMysql = mysqlDukans.filter(
-        (d) => !(d.tripId === 'trip-dashrath-ranoli' && d.id.startsWith('duk-dsr-'))
-      );
-      return { dukans: cleanMysql, deletedIds: dummyDsrIds, source: 'mysql' };
+      return { dukans: mysqlDukans, deletedIds: [], source: 'mysql' };
     }
   } catch (e) {}
 
   // 2. Read from GitHub Gist Cloud Store
   const { dukans, deletedIds } = await getDukansFromGist();
-  const allDeletedIds = Array.from(new Set([...deletedIds, ...dummyDsrIds]));
-  const cleanDukans = dukans.filter(
-    (d) => !(d.tripId === 'trip-dashrath-ranoli' && d.id.startsWith('duk-dsr-')) && !allDeletedIds.includes(d.id)
-  );
+  const deletedSet = new Set(deletedIds);
+  const cleanDukans = dukans.filter((d) => !deletedSet.has(d.id));
 
-  return { dukans: cleanDukans, deletedIds: allDeletedIds, source: 'cloud_gist' };
+  return { dukans: cleanDukans, deletedIds, source: 'cloud_gist' };
 };
 
 // Master Function: Save a single new/updated dukan

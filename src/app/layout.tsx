@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Rushabh Agency - Field Salesman Order Booking",
-  description: "Phone-first field order collection app for Rushabh Agency salesmen and retail dukans",
+  title: "Rushabh Agency - Field Salesman Order Booking & Distribution Portal",
+  description: "Official Field SFA & Order Booking platform for Rushabh Agency salesmen and retail dukans",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -19,8 +19,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  maximumScale: 5,
+  userScalable: true,
   themeColor: "#047857",
 };
 
@@ -38,9 +38,9 @@ export default function RootLayout({
         <meta name="apple-touch-fullscreen" content="yes" />
         <link rel="apple-touch-icon" href="/logo.jpg" />
       </head>
-      <body className="antialiased min-h-screen flex justify-center bg-gradient-to-br from-slate-200 via-stone-100 to-emerald-100/40 text-slate-800">
-        {/* Mobile Device Viewport Container - feels like a premium phone app on both desktop & mobile */}
-        <div className="w-full max-w-md min-h-screen bg-[#F8FAFC] shadow-[0_20px_60px_-15px_rgba(15,23,42,0.15)] flex flex-col relative overflow-x-hidden border-x border-slate-200/90">
+      <body className="antialiased min-h-screen bg-[#F8FAFC] text-slate-800">
+        {/* Responsive Root Viewport: Native app feel on mobile; Full-width responsive web portal on desktop & laptop */}
+        <div className="w-full min-h-screen bg-[#F8FAFC] flex flex-col relative overflow-x-hidden">
           <NetworkStatusBanner />
           {children}
         </div>

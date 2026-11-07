@@ -73,7 +73,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col justify-between p-5 bg-gradient-to-b from-emerald-50/70 via-stone-50 to-white text-slate-900 min-h-screen">
+    <div className="flex-1 flex flex-col justify-between p-5 bg-gradient-to-b from-emerald-50/70 via-stone-50 to-white text-slate-900 min-h-screen"><div className="w-full max-w-md mx-auto flex-1 flex flex-col justify-between">
       {/* Top Branding with Rushabh Agency Logo */}
       <div className="pt-6 text-center">
         <div className="w-20 h-20 rounded-3xl overflow-hidden shadow-xl shadow-emerald-700/10 mx-auto mb-3 border-2 border-emerald-500/40 p-1.5 bg-white ring-4 ring-emerald-500/10 flex items-center justify-center">
@@ -201,8 +201,7 @@ export default function LoginPage() {
         </span>
         <span className="font-extrabold text-emerald-700">Rushabh Agency</span>
       </div>
-
-
     </div>
-  );
+  </div>
+);
 }

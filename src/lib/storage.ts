@@ -8,12 +8,12 @@ import {
   INITIAL_ORDERS,
 } from '@/data/mockData';
 
-const USERS_KEY = 'rushabh_app_users_v4';
-const TRIPS_KEY = 'rushabh_app_trips_v4';
-const DUKANS_KEY = 'rushabh_app_dukans_v4';
-const COMPANIES_KEY = 'rushabh_app_companies_v4';
-const PRODUCTS_KEY = 'rushabh_app_products_v4';
-const ORDERS_KEY = 'rushabh_app_orders_v4';
+const USERS_KEY = 'rushabh_app_users_v5';
+const TRIPS_KEY = 'rushabh_app_trips_v5';
+const DUKANS_KEY = 'rushabh_app_dukans_v5';
+const COMPANIES_KEY = 'rushabh_app_companies_v5';
+const PRODUCTS_KEY = 'rushabh_app_products_v5';
+const ORDERS_KEY = 'rushabh_app_orders_v5';
 const LOCAL_DELETED_ORDERS_KEY = 'rushabh_deleted_order_ids_v1';
 const LOCAL_DELETED_COMPANIES_KEY = 'rushabh_deleted_company_ids_v1';
 const CURRENT_USER_KEY = 'rushabh_app_current_user_v4';
@@ -347,7 +347,6 @@ export const deduplicateDukans = (dukans: Dukan[]): Dukan[] => {
   for (const d of dukans) {
     if (!d || !d.shopName) continue;
     // Strictly filter out any obsolete dummy placeholder shops in Dashrath-Ranoli
-    if (d.tripId === 'trip-dashrath-ranoli' && d.id && d.id.startsWith('duk-dsr-')) continue;
 
     const cleanName = d.shopName.trim().toLowerCase().replace(/\s+/g, ' ');
     const normKey = `${d.tripId || ''}::${cleanName}`;
@@ -417,9 +416,7 @@ export const getStoredDukans = (): Dukan[] => {
     }
 
     // Merge INITIAL_DUKANS with locally stored custom dukans with ZERO duplicates
-    const combined = [...INITIAL_DUKANS, ...stored].filter(
-      (d) => !(d.tripId === 'trip-dashrath-ranoli' && d.id && d.id.startsWith('duk-dsr-'))
-    );
+    const combined = [...INITIAL_DUKANS, ...stored];
     return deduplicateDukans(combined);
   } catch (e) {
     return INITIAL_DUKANS;
@@ -1057,7 +1054,20 @@ export const deleteProduct = (productId: string): Product[] => {
 // ORDERS (FOR SALESMEN & OWNER)
 export const getStoredOrders = (): Order[] => {
   if (!isBrowser) return INITIAL_ORDERS;
-  const data = localStorage.getItem(ORDERS_KEY);
+  let data = localStorage.getItem(ORDERS_KEY);
+  if (!data) {
+    // Check legacy v4 storage to preserve existing orders
+    const legacyData = localStorage.getItem('rushabh_app_orders_v4');
+    if (legacyData) {
+      try {
+        const parsed = JSON.parse(legacyData);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          localStorage.setItem(ORDERS_KEY, legacyData);
+          data = legacyData;
+        }
+      } catch (e) {}
+    }
+  }
   if (!data) {
     localStorage.setItem(ORDERS_KEY, JSON.stringify(INITIAL_ORDERS));
     return INITIAL_ORDERS;
@@ -1512,7 +1522,7 @@ export const syncDukansWithBackend = async (): Promise<Dukan[]> => {
       // 2. Merge: INITIAL_DUKANS + cleanLocal + cloudDukans with ZERO DUPLICATES!
       // cloudDukans is placed LAST so any updates from cloud override stale local cache
       const combined = [...INITIAL_DUKANS, ...cleanLocal, ...cloudDukans].filter(
-        (d) => !deletedIds.has(d.id) && !(d.tripId === 'trip-dashrath-ranoli' && d.id.startsWith('duk-dsr-'))
+        (d) => !deletedIds.has(d.id)
       );
       const merged = deduplicateDukans(combined);
       saveDukans(merged);
@@ -1747,7 +1757,7 @@ export const syncAllWithBackend = async (): Promise<{ orders: Order[]; dukans: D
         const localDukans = getStoredDukans();
         const cleanLocalDukans = localDukans.filter((d) => !deletedDukanIds.has(d.id));
         const combinedDukans = [...INITIAL_DUKANS, ...cleanLocalDukans, ...cloudDukans].filter(
-          (d) => !deletedDukanIds.has(d.id) && !(d.tripId === 'trip-dashrath-ranoli' && d.id.startsWith('duk-dsr-'))
+          (d) => !deletedDukanIds.has(d.id)
         );
         const deduplicatedDukans = deduplicateDukans(combinedDukans);
 

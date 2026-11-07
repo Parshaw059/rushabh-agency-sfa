@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { MapPin, ShoppingBag, ShieldCheck, Package, ListOrdered } from 'lucide-react';
+import { MapPin, Package, ListOrdered } from 'lucide-react';
 import { User } from '@/types';
 import { getCurrentUser } from '@/lib/storage';
 
@@ -18,7 +18,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ currentUser })
   const isOwner = effectiveUser?.role === 'OWNER';
 
   return (
-    <nav className="fixed bottom-0 max-w-md w-full bg-white/95 backdrop-blur-lg border-t border-slate-200/90 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] z-30 flex items-center justify-around py-2 px-2">
+    <nav className="fixed bottom-0 left-0 right-0 max-w-md w-full mx-auto md:hidden bg-white/95 backdrop-blur-lg border-t border-slate-200/90 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] z-30 flex items-center justify-around py-2 px-2">
       {/* 1. Trips / Beats */}
       <Link
         href="/trips"

@@ -122,7 +122,7 @@ export default function TripsPage() {
         currentUser={currentUser}
       />
 
-      <main className="p-4 space-y-4">
+      <main className="max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
         {/* Live KPI Metric Card: Today's Booking Value with Micro-Trend Badge */}
         <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 rounded-3xl p-5 text-white shadow-xl border border-emerald-500/20 relative overflow-hidden">
           {/* Ambient Decorative Glow */}
@@ -259,12 +259,14 @@ export default function TripsPage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between px-1">
             <span className="text-xs font-black text-slate-600 uppercase tracking-wider">
-              Available Routes ({trips.length})
+              Available Routes ({trips.length} Beats)
             </span>
-            <span className="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/80">
-              Tap trip to view pending shops
+            <span className="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/80">
+              Select a beat to view retailers & book orders
             </span>
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
 
           {trips.map((trip) => {
             const tripDukans = dukans.filter((d) => d.tripId === trip.id);
@@ -347,6 +349,7 @@ export default function TripsPage() {
               </Link>
             );
           })}
+          </div>
         </div>
 
         {/* Salesman Account Credentials & Security Card */}

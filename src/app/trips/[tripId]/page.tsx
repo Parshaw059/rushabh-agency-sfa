@@ -268,7 +268,7 @@ export default function TripDukansPage() {
         currentUser={currentUser}
       />
 
-      <main className="p-4 space-y-4">
+      <main className="max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
         {/* Notification Toast */}
         {notification && (
           <div className="p-3 bg-emerald-700 text-white text-xs font-bold rounded-2xl shadow-lg flex items-center justify-between animate-in fade-in slide-in-from-top-2">

@@ -508,7 +508,7 @@ export default function SalesmanOrderTakingPage() {
       />
 
       {/* Main Order Content */}
-      <main className="p-3 space-y-3">
+      <main className="max-w-7xl mx-auto w-full p-3 sm:p-5 lg:p-6 space-y-4">
         {/* Dukan & MRP Only Reminder Banner */}
         <div className="bg-white rounded-2xl p-3 border border-slate-200/90 shadow-xs flex items-center justify-between">
           <div>
@@ -695,7 +695,7 @@ export default function SalesmanOrderTakingPage() {
         </div>
 
         {/* Product Cards List */}
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {displayedProducts.length === 0 ? (
             <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center space-y-2">
               <p className="text-slate-700 text-xs font-bold">
@@ -896,37 +896,39 @@ export default function SalesmanOrderTakingPage() {
         </div>
       </main>
 
-      {/* Floating Bottom Bar (Sticky Order Totals) */}
+      {/* Floating Bottom Bar (Sticky Order Totals - Responsive for Phone & Laptop) */}
       {cartItems.length > 0 && (
-        <div className="fixed bottom-0 max-w-md w-full bg-white/95 backdrop-blur-md text-slate-900 p-3 border-t border-slate-200/90 shadow-[0_-8px_30px_rgba(0,0,0,0.08)] z-30 flex items-center justify-between gap-3 animate-in slide-in-from-bottom duration-150">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-black">
-              <span className="bg-emerald-100 text-emerald-800 border border-emerald-300/80 px-2 py-0.5 rounded-md text-[10px]">
-                {cartItems.length} SKUs
-              </span>
-              <span className="text-slate-700">{totalCartBoxes} Boxes</span>
-              <span className="text-slate-300">•</span>
-              <span className="text-emerald-700 font-extrabold">{totalCartUnits} Total Pcs</span>
+        <div className="fixed bottom-0 left-0 right-0 w-full bg-white/95 backdrop-blur-md text-slate-900 border-t border-slate-200/90 shadow-[0_-8px_30px_rgba(0,0,0,0.08)] z-30 animate-in slide-in-from-bottom duration-150">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-black">
+                <span className="bg-emerald-100 text-emerald-800 border border-emerald-300/80 px-2 py-0.5 rounded-md text-[10px]">
+                  {cartItems.length} SKUs
+                </span>
+                <span className="text-slate-700">{totalCartBoxes} Boxes</span>
+                <span className="text-slate-300">•</span>
+                <span className="text-emerald-700 font-extrabold">{totalCartUnits} Total Pcs</span>
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">
+                Est. Total MRP: <strong className="text-slate-900 text-xs font-black">₹{totalCartMrpValue.toFixed(2)}</strong>
+              </div>
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">
-              Est. Total MRP: <strong className="text-slate-900 text-xs font-black">₹{totalCartMrpValue.toFixed(2)}</strong>
-            </div>
-          </div>
 
-          <button
-            onClick={() => setIsReviewOpen(true)}
-            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-xs shadow-md shadow-emerald-700/25 flex items-center gap-1.5 transition-all active:scale-[0.98]"
-          >
-            <span>{existingTodayOrder ? `Review Bill (${existingTodayOrder.orderNumber})` : 'Review Order'}</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
+            <button
+              onClick={() => setIsReviewOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-xs shadow-md shadow-emerald-700/25 flex items-center gap-1.5 transition-all active:scale-[0.98]"
+            >
+              <span>{existingTodayOrder ? `Review Bill (${existingTodayOrder.orderNumber})` : 'Review Order'}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 
       {/* Review Drawer Modal */}
       {isReviewOpen && (
         <div className="fixed inset-0 z-50 overflow-hidden flex justify-center bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="max-w-md w-full bg-white flex flex-col h-full shadow-2xl">
+          <div className="max-w-md md:max-w-2xl w-full bg-white flex flex-col h-full md:h-auto md:max-h-[90vh] md:my-auto md:rounded-3xl shadow-2xl overflow-hidden">
             {/* Header */}
             <div className="bg-white text-slate-900 p-4 flex items-center justify-between border-b border-slate-200">
               <div>

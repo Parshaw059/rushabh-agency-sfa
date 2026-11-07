@@ -232,7 +232,7 @@ export default function OwnerOrdersPage() {
         currentUser={currentUser}
       />
 
-      <main className="p-4 space-y-4">
+      <main className="max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
         {/* Live KPI Metric Card: Today's Booking Value with Micro-Trend Badge */}
         <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 rounded-3xl p-5 text-white shadow-xl border border-emerald-500/20 relative overflow-hidden">
           {/* Ambient Decorative Glow */}

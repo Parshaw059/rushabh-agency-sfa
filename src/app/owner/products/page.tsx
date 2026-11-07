@@ -275,7 +275,7 @@ export default function OwnerProductsPage() {
         currentUser={currentUser}
       />
 
-      <main className="p-4 space-y-4">
+      <main className="max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 space-y-6">
         {/* Owner Action Banner with 3 Parallel Full-Width Options */}
         <div className="bg-white rounded-3xl p-4 border border-slate-200/90 shadow-sm space-y-3">
           <div>
@@ -457,7 +457,7 @@ export default function OwnerProductsPage() {
         )}
 
         {/* Product Items List */}
-        <div className="space-y-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {filtered.map((product) => (
             <div
               key={product.id}
