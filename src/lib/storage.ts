@@ -7,6 +7,7 @@ import {
   INITIAL_PRODUCTS,
   INITIAL_ORDERS,
 } from '@/data/mockData';
+import { broadcastSync } from '@/lib/syncBus';
 
 const USERS_KEY = 'rushabh_app_users_v5';
 const TRIPS_KEY = 'rushabh_app_trips_v5';
@@ -14,34 +15,94 @@ const DUKANS_KEY = 'rushabh_app_dukans_v5';
 const COMPANIES_KEY = 'rushabh_app_companies_v5';
 const PRODUCTS_KEY = 'rushabh_app_products_v5';
 const ORDERS_KEY = 'rushabh_app_orders_v5';
+const SETTINGS_KEY = 'rushabh_app_settings_v5';
 const LOCAL_DELETED_ORDERS_KEY = 'rushabh_deleted_order_ids_v1';
 const LOCAL_DELETED_COMPANIES_KEY = 'rushabh_deleted_company_ids_v1';
-const CURRENT_USER_KEY = 'rushabh_app_current_user_v4';
-const AUTH_TOKEN_KEY = 'rushabh_app_auth_token_v4';
+const CURRENT_USER_KEY = 'rushabh_app_current_user_v5';
+const AUTH_TOKEN_KEY = 'rushabh_app_auth_token_v5';
+const DEFAULT_LOGO = '/logo.jpg';
 
 const isBrowser = typeof window !== 'undefined';
 
-// AUTH TOKEN HANDLING
+// ==========================================
+// AGENCY LOGO & SETTINGS HANDLING
+// ==========================================
+export const getAgencyLogo = (): string => {
+  if (!isBrowser) return DEFAULT_LOGO;
+  try {
+    const data = localStorage.getItem(SETTINGS_KEY);
+    if (data) {
+      const parsed = JSON.parse(data);
+      if (parsed && parsed.logoUrl) return parsed.logoUrl;
+    }
+  } catch (e) {}
+  return DEFAULT_LOGO;
+};
+
+export const saveAgencyLogoLocally = (logoUrl: string): void => {
+  if (!isBrowser) return;
+  try {
+    const data = localStorage.getItem(SETTINGS_KEY);
+    const existing = data ? JSON.parse(data) : {};
+    const updated = { ...existing, logoUrl, updatedAt: new Date().toISOString() };
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('rushabh-logo-updated', { detail: logoUrl }));
+    broadcastSync({ type: 'LOGO_UPDATED', logoUrl });
+  } catch (e) {}
+};
+
+export const updateAgencyLogo = async (logoUrl: string): Promise<boolean> => {
+  saveAgencyLogoLocally(logoUrl);
+  if (!isBrowser) return true;
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({ logoUrl }),
+    });
+    return res.ok;
+  } catch (e) {
+    return false;
+  }
+};
+
+// ==========================================
+// TAB-ISOLATED AUTH & SESSION HANDLING
+// ==========================================
 export const getAuthToken = (): string | null => {
   if (!isBrowser) return null;
-  return localStorage.getItem(AUTH_TOKEN_KEY);
+  try {
+    return sessionStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem(AUTH_TOKEN_KEY);
+  } catch (e) {
+    return null;
+  }
 };
 
 export const setAuthToken = (token: string | null): void => {
   if (!isBrowser) return;
-  if (token) {
-    localStorage.setItem(AUTH_TOKEN_KEY, token);
-  } else {
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-  }
+  try {
+    if (token) {
+      sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+      localStorage.setItem(AUTH_TOKEN_KEY, token);
+    } else {
+      sessionStorage.removeItem(AUTH_TOKEN_KEY);
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+    }
+  } catch (e) {}
 };
 
 export const getAuthHeaders = (): Record<string, string> => {
   const token = getAuthToken();
-  if (!token) return {};
-  return {
-    Authorization: `Bearer ${token}`,
+  const headers: Record<string, string> = {
+    'x-app-client': 'rushabh-agency-sfa',
   };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
 };
 
 // LOCAL DELETED ORDERS TOMBSTONES
@@ -77,19 +138,39 @@ export const getStoredUsers = (): User[] => {
 
 export const getCurrentUser = (): User | null => {
   if (!isBrowser) return null;
-  const data = localStorage.getItem(CURRENT_USER_KEY);
-  if (!data) return null;
-  return JSON.parse(data);
+  // 1. Tab-isolated session storage first (allows separate logins per tab)
+  try {
+    const sessionData = sessionStorage.getItem(CURRENT_USER_KEY);
+    if (sessionData) {
+      return JSON.parse(sessionData);
+    }
+  } catch (e) {}
+
+  // 2. Global persistent local storage fallback (for returning visits / new windows)
+  try {
+    const localData = localStorage.getItem(CURRENT_USER_KEY);
+    if (localData) {
+      const user = JSON.parse(localData);
+      try {
+        sessionStorage.setItem(CURRENT_USER_KEY, localData);
+      } catch (e) {}
+      return user;
+    }
+  } catch (e) {}
+  return null;
 };
 
 export const setCurrentUser = (user: User | null): void => {
-  if (isBrowser) {
+  if (!isBrowser) return;
+  try {
     if (user) {
+      sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
       localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
     } else {
+      sessionStorage.removeItem(CURRENT_USER_KEY);
       localStorage.removeItem(CURRENT_USER_KEY);
     }
-  }
+  } catch (e) {}
 };
 
 // Fast cryptographic SHA-256 for instant 0ms client verification without exposing plaintext PIN
@@ -425,7 +506,11 @@ export const getStoredDukans = (): Dukan[] => {
 
 export const saveDukans = (dukans: Dukan[]): void => {
   if (isBrowser) {
-    localStorage.setItem(DUKANS_KEY, JSON.stringify(dukans));
+    try {
+      localStorage.setItem(DUKANS_KEY, JSON.stringify(dukans));
+      window.dispatchEvent(new CustomEvent('rushabh-dukans-synced', { detail: dukans }));
+      broadcastSync({ type: 'DUKANS_UPDATED', dukans });
+    } catch (e) {}
   }
 };
 
@@ -954,7 +1039,12 @@ export const getStoredProducts = (): Product[] => {
 
 export const saveProducts = (products: Product[]): void => {
   if (isBrowser) {
-    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(deduplicateProducts(products)));
+    try {
+      const clean = deduplicateProducts(products);
+      localStorage.setItem(PRODUCTS_KEY, JSON.stringify(clean));
+      window.dispatchEvent(new CustomEvent('rushabh-products-synced', { detail: clean }));
+      broadcastSync({ type: 'PRODUCTS_UPDATED', products: clean });
+    } catch (e) {}
   }
 };
 
@@ -1086,7 +1176,11 @@ export const getStoredOrders = (): Order[] => {
 
 export const saveOrders = (orders: Order[]): void => {
   if (isBrowser) {
-    localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+    try {
+      localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+      window.dispatchEvent(new CustomEvent('rushabh-orders-synced', { detail: orders }));
+      broadcastSync({ type: 'ORDERS_UPDATED', orders });
+    } catch (e) {}
   }
 };
 
@@ -1331,8 +1425,8 @@ export const deleteOrder = (orderId: string): Order[] => {
 const QUEUE_KEY = 'rushabh_offline_order_queue_v4';
 
 // Queue order or post to MySQL backend
-export const syncOrderToBackend = async (order: Order): Promise<void> => {
-  if (!isBrowser) return;
+export const syncOrderToBackend = async (order: Order): Promise<boolean> => {
+  if (!isBrowser) return false;
 
   if (navigator.onLine) {
     try {
@@ -1341,7 +1435,10 @@ export const syncOrderToBackend = async (order: Order): Promise<void> => {
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(order),
       });
-      if (res.ok) return;
+      if (res.ok) {
+        broadcastSync({ type: 'TRIGGER_SYNC' });
+        return true;
+      }
     } catch (err) {
       // Fall through to queue
     }
@@ -1354,6 +1451,7 @@ export const syncOrderToBackend = async (order: Order): Promise<void> => {
     queue.push(order);
     localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
   } catch (e) {}
+  return false;
 };
 
 // Flush offline queue to MySQL when connection is restored
@@ -1809,6 +1907,11 @@ export const syncAllWithBackend = async (): Promise<{ orders: Order[]; dukans: D
         );
         const mergedProducts = deduplicateProducts(combinedProducts);
         saveProducts(mergedProducts);
+
+        // --- MERGE SETTINGS & LOGO ---
+        if (data.settings && data.settings.logoUrl) {
+          saveAgencyLogoLocally(data.settings.logoUrl);
+        }
 
         // Dispatch single set of events
         if (typeof window !== 'undefined') {

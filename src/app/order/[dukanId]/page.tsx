@@ -409,6 +409,8 @@ export default function SalesmanOrderTakingPage() {
       setCartItems([]);
       setIsReviewOpen(false);
       setIsSubmitting(false);
+      // Immediately trigger background cloud flush to ensure all other devices receive this bill at once
+      syncOrdersWithBackend().catch(() => {});
       // Already confirmed today — open updated bill receipt directly without re-running animation
       setIsReceiptOpen(true);
     } else {
@@ -425,6 +427,8 @@ export default function SalesmanOrderTakingPage() {
       setCartItems([]);
       setIsReviewOpen(false);
       setIsSubmitting(false);
+      // Immediately trigger background cloud flush to ensure all other devices receive this bill at once
+      syncOrdersWithBackend().catch(() => {});
       // Brand new order: launch trailer animation only one time until order is confirmed
       setShowTruckAnimation(true);
     }

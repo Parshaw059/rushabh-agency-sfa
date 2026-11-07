@@ -13,6 +13,7 @@ import {
   isDateToday,
   syncAllWithBackend,
 } from '@/lib/storage';
+import { subscribeToSync } from '@/lib/syncBus';
 import { MobileHeader } from '@/components/MobileHeader';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { ChangeCredentialsModal } from '@/components/ChangeCredentialsModal';
@@ -65,8 +66,8 @@ export default function TripsPage() {
     // Sync cloud orders & dukans immediately
     refreshData();
 
-    // Auto poll every 30s (paused when tab is hidden to protect rate limits)
-    const interval = setInterval(refreshData, 30000);
+    // Active Real-Time Auto Poll (every 5 seconds for instant multi-device reflection)
+    const interval = setInterval(refreshData, 5000);
 
     const handleSyncEvent = () => {
       setTrips(getStoredTrips());
@@ -74,13 +75,37 @@ export default function TripsPage() {
       setOrders(getStoredOrders());
     };
 
+    // Cross-tab broadcast listener (0ms latency between tabs on same device)
+    const unsubscribeBus = subscribeToSync((event) => {
+      if (
+        event.type === 'ORDERS_UPDATED' ||
+        event.type === 'DUKANS_UPDATED' ||
+        event.type === 'TRIGGER_SYNC'
+      ) {
+        handleSyncEvent();
+        refreshData();
+      }
+    });
+
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (
+        e.key === 'rushabh_app_orders_v5' ||
+        e.key === 'rushabh_app_dukans_v5'
+      ) {
+        handleSyncEvent();
+      }
+    };
+
     window.addEventListener('visibilitychange', refreshData);
+    window.addEventListener('storage', handleStorageEvent);
     window.addEventListener('rushabh-orders-synced', handleSyncEvent);
     window.addEventListener('rushabh-dukans-synced', handleSyncEvent);
 
     return () => {
       clearInterval(interval);
+      unsubscribeBus();
       window.removeEventListener('visibilitychange', refreshData);
+      window.removeEventListener('storage', handleStorageEvent);
       window.removeEventListener('rushabh-orders-synced', handleSyncEvent);
       window.removeEventListener('rushabh-dukans-synced', handleSyncEvent);
     };

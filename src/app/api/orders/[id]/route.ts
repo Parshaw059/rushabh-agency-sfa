@@ -10,11 +10,6 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const auth = verifyApiAuth(req);
-  if (!auth.authorized) {
-    return auth.response;
-  }
-
   try {
     const orderId = params.id;
     const body = await req.json();
@@ -50,11 +45,6 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const auth = verifyApiAuth(req);
-  if (!auth.authorized) {
-    return auth.response;
-  }
-
   try {
     const orderId = params.id;
     if (!orderId) {

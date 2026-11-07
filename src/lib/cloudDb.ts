@@ -954,4 +954,77 @@ export const updateCloudUserCredentials = async (
   }
 };
 
+// ==========================================
+// 6. AGENCY SETTINGS & LOGO CLOUD STORE
+// ==========================================
+
+export interface AgencySettings {
+  logoUrl?: string;
+  agencyName?: string;
+  phone?: string;
+  address?: string;
+  updatedAt?: string;
+}
+
+export const getSettingsFromGist = async (bypassCache: boolean = false): Promise<AgencySettings> => {
+  const files = await getRawGistFiles(bypassCache);
+  const settingsContent = files['settings.json'];
+  if (settingsContent) {
+    try {
+      const parsed = JSON.parse(settingsContent);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch (e) {}
+  }
+  return {
+    logoUrl: '/logo.jpg',
+    agencyName: 'Rushabh Agency',
+    phone: '8128232377',
+    address: 'Vadodara, Gujarat',
+    updatedAt: new Date().toISOString(),
+  };
+};
+
+export const saveSettingsToGist = async (settings: AgencySettings): Promise<boolean> => {
+  const token = getStoreKey();
+  if (!token) {
+    console.warn('[CloudDb] Warning: CLOUD_STORE_KEY is not set.');
+    return false;
+  }
+
+  try {
+    gistFilesCache = null;
+
+    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `token ${token}`,
+        'User-Agent': 'Rushabh-Agency-SFA',
+        'Content-Type': 'application/json',
+        Accept: 'application/vnd.github.v3+json',
+      },
+      body: JSON.stringify({
+        files: {
+          'settings.json': {
+            content: JSON.stringify(settings, null, 2),
+          },
+        },
+      }),
+    });
+
+    return res.ok;
+  } catch (err) {
+    console.warn('[CloudDb] Gist write settings exception:', err);
+    return false;
+  }
+};
+
+export const getCloudSettings = async (): Promise<AgencySettings> => {
+  return await getSettingsFromGist();
+};
+
+export const saveCloudSettings = async (settings: AgencySettings): Promise<boolean> => {
+  return await saveSettingsToGist(settings);
+};
+
+
 

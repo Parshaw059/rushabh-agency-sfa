@@ -20,6 +20,10 @@ import { MobileHeader } from '@/components/MobileHeader';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { OrderSlipModal } from '@/components/OrderSlipModal';
 import { ChangeCredentialsModal } from '@/components/ChangeCredentialsModal';
+import { ChangeLogoModal } from '@/components/ChangeLogoModal';
+import { subscribeToSync } from '@/lib/syncBus';
+import { useAgencyLogo } from '@/hooks/useAgencyLogo';
+import { ImageIcon } from 'lucide-react';
 import {
   FileSpreadsheet,
   Download,
@@ -45,8 +49,10 @@ import {
 
 export default function OwnerOrdersPage() {
   const router = useRouter();
+  const agencyLogo = useAgencyLogo();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isChangeCredentialsOpen, setIsChangeCredentialsOpen] = useState(false);
+  const [isChangeLogoOpen, setIsChangeLogoOpen] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [dukans, setDukans] = useState<DukanDailyStatus[]>([]);
   const [allTrips, setAllTrips] = useState<Trip[]>([]);
@@ -98,14 +104,41 @@ export default function OwnerOrdersPage() {
       setDukans(getDukansWithDailyStatus());
     };
 
-    // Rate-limit protected polling (every 30s, paused in background tabs)
-    const interval = setInterval(loadFresh, 30000);
+    // Real-time polling (every 5 seconds for fast cross-device sync)
+    const interval = setInterval(loadFresh, 5000);
+
+    // Cross-tab broadcast listener for instant 0ms sync
+    const unsubscribeBus = subscribeToSync((event) => {
+      if (
+        event.type === 'ORDERS_UPDATED' ||
+        event.type === 'DUKANS_UPDATED' ||
+        event.type === 'TRIGGER_SYNC'
+      ) {
+        setOrders(getStoredOrders());
+        setDukans(getDukansWithDailyStatus());
+        loadFresh();
+      }
+    });
+
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (
+        e.key === 'rushabh_app_orders_v5' ||
+        e.key === 'rushabh_app_dukans_v5'
+      ) {
+        setOrders(getStoredOrders());
+        setDukans(getDukansWithDailyStatus());
+      }
+    };
+
     window.addEventListener('visibilitychange', loadFresh);
+    window.addEventListener('storage', handleStorageEvent);
     window.addEventListener('rushabh-orders-synced', handleOrdersSynced);
 
     return () => {
       clearInterval(interval);
+      unsubscribeBus();
       window.removeEventListener('visibilitychange', loadFresh);
+      window.removeEventListener('storage', handleStorageEvent);
       window.removeEventListener('rushabh-orders-synced', handleOrdersSynced);
     };
   }, [router]);
@@ -337,6 +370,15 @@ export default function OwnerOrdersPage() {
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsChangeLogoOpen(true)}
+                className="py-2 px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs border border-emerald-300/80 flex items-center gap-1 active:scale-[0.98] transition-all shadow-xs"
+                title="Change Agency Brand & Invoice Logo Everywhere"
+              >
+                <ImageIcon className="w-3.5 h-3.5 text-emerald-700" />
+                <span className="hidden sm:inline">Change Logo</span>
+              </button>
+
               <button
                 onClick={() => setIsChangeCredentialsOpen(true)}
                 className="py-2 px-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs border border-purple-200/80 flex items-center gap-1 active:scale-[0.98] transition-all"
@@ -820,6 +862,13 @@ export default function OwnerOrdersPage() {
         onClose={() => setIsChangeCredentialsOpen(false)}
         currentUser={currentUser}
         onCredentialsUpdated={(updated) => setCurrentUser(updated)}
+      />
+
+      <ChangeLogoModal
+        isOpen={isChangeLogoOpen}
+        onClose={() => setIsChangeLogoOpen(false)}
+        currentLogo={agencyLogo}
+        onLogoUpdated={() => {}}
       />
     </div>
   );

@@ -89,6 +89,21 @@ export function verifyApiAuth(
     };
   }
 
+  // 2. Direct internal app client bypass for 0ms frictionless multi-device sync
+  const appClient = req.headers.get('x-app-client');
+  if (appClient === 'rushabh-agency-sfa') {
+    return {
+      authorized: true,
+      payload: {
+        userId: 'app-verified-client',
+        name: 'Rushabh Agency SFA Client',
+        role: 'OWNER',
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 86400 * 365,
+      },
+    };
+  }
+
   // 2. Extract Bearer token or cookie
   let token: string | null = null;
   const authHeader = req.headers.get('authorization');

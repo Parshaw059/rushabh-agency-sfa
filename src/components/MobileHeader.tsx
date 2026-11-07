@@ -17,7 +17,10 @@ import {
 } from 'lucide-react';
 import { User as UserType } from '@/types';
 import { logoutUser, syncAllWithBackend } from '@/lib/storage';
+import { useAgencyLogo } from '@/hooks/useAgencyLogo';
 import { ChangeCredentialsModal } from './ChangeCredentialsModal';
+import { ChangeLogoModal } from './ChangeLogoModal';
+import { ImageIcon } from 'lucide-react';
 
 interface MobileHeaderProps {
   title: string;
@@ -36,7 +39,9 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
 }) => {
   const router = useRouter();
   const pathname = usePathname();
+  const agencyLogo = useAgencyLogo();
   const [isChangeCredentialsOpen, setIsChangeCredentialsOpen] = useState(false);
+  const [isChangeLogoOpen, setIsChangeLogoOpen] = useState(false);
   const [userState, setUserState] = useState<UserType | null>(currentUser || null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncToast, setSyncToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -89,7 +94,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
 
   const handleLogout = () => {
     logoutUser();
-    router.push('/login');
+    router.push('/login?switch=true');
   };
 
   const isOwner = userState?.role === 'OWNER';
@@ -111,7 +116,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
             ) : (
               <Link href="/trips" className="flex items-center gap-2.5">
                 <img
-                  src="/logo.jpg"
+                  src={agencyLogo || '/logo.jpg'}
                   alt="Rushabh Agency"
                   className="w-8 h-8 rounded-xl object-cover border border-emerald-500/40 shadow-xs flex-shrink-0 ring-2 ring-emerald-500/15"
                 />
@@ -186,6 +191,18 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
 
             {userState && (
               <>
+                {/* Owner Only: Change Brand Logo Button */}
+                {isOwner && (
+                  <button
+                    onClick={() => setIsChangeLogoOpen(true)}
+                    className="p-1.5 sm:px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300/80 transition-all flex items-center gap-1 text-[10px] font-black active:scale-95 shadow-xs"
+                    title="Change Agency Brand & Bill Logo Everywhere"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5 text-emerald-700" />
+                    <span className="hidden sm:inline">Change Logo</span>
+                  </button>
+                )}
+
                 {/* Change Username & Password Key Button */}
                 <button
                   onClick={() => setIsChangeCredentialsOpen(true)}
@@ -251,6 +268,13 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
         onClose={() => setIsChangeCredentialsOpen(false)}
         currentUser={userState}
         onCredentialsUpdated={(updated) => setUserState(updated)}
+      />
+
+      <ChangeLogoModal
+        isOpen={isChangeLogoOpen}
+        onClose={() => setIsChangeLogoOpen(false)}
+        currentLogo={agencyLogo}
+        onLogoUpdated={() => {}}
       />
     </>
   );

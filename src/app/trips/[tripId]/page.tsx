@@ -17,6 +17,7 @@ import {
   updateDukan,
   deleteDukan,
 } from '@/lib/storage';
+import { subscribeToSync } from '@/lib/syncBus';
 import { MobileHeader } from '@/components/MobileHeader';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { OrderSlipModal } from '@/components/OrderSlipModal';
@@ -106,7 +107,7 @@ export default function TripDukansPage() {
       });
     }
 
-    // Auto-sync with cloud every 30 seconds (paused when tab is hidden)
+    // Auto-sync with cloud every 5 seconds for instant multi-device reflection
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
         return;
@@ -117,7 +118,7 @@ export default function TripDukansPage() {
           setDukans(getDukansWithDailyStatus(foundTrip.id));
         }
       });
-    }, 30000);
+    }, 5000);
 
     const handleFocus = () => {
       syncAllWithBackend().then(() => {
@@ -127,19 +128,44 @@ export default function TripDukansPage() {
         }
       });
     };
+
     const handleSyncEvents = () => {
       if (foundTrip) {
         setTrip(getStoredTrips().find((t) => t.id === foundTrip.id) || foundTrip);
         setDukans(getDukansWithDailyStatus(foundTrip.id));
       }
     };
+
+    // Cross-tab broadcast listener for instant 0ms sync
+    const unsubscribeBus = subscribeToSync((event) => {
+      if (
+        event.type === 'ORDERS_UPDATED' ||
+        event.type === 'DUKANS_UPDATED' ||
+        event.type === 'TRIGGER_SYNC'
+      ) {
+        handleSyncEvents();
+      }
+    });
+
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (
+        e.key === 'rushabh_app_orders_v5' ||
+        e.key === 'rushabh_app_dukans_v5'
+      ) {
+        handleSyncEvents();
+      }
+    };
+
     window.addEventListener('visibilitychange', handleFocus);
+    window.addEventListener('storage', handleStorageEvent);
     window.addEventListener('rushabh-dukans-synced', handleSyncEvents);
     window.addEventListener('rushabh-orders-synced', handleSyncEvents);
 
     return () => {
       clearInterval(interval);
+      unsubscribeBus();
       window.removeEventListener('visibilitychange', handleFocus);
+      window.removeEventListener('storage', handleStorageEvent);
       window.removeEventListener('rushabh-dukans-synced', handleSyncEvents);
       window.removeEventListener('rushabh-orders-synced', handleSyncEvents);
     };

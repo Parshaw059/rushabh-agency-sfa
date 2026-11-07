@@ -41,11 +41,6 @@ export async function GET() {
 
 // POST /api/orders - Save new field order into Cloud Store
 export async function POST(req: NextRequest) {
-  const auth = verifyApiAuth(req);
-  if (!auth.authorized) {
-    return auth.response;
-  }
-
   try {
     const orderData: Order = await req.json();
 

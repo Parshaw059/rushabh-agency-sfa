@@ -5,13 +5,14 @@ import {
   getCloudProducts,
   getCloudCompanies,
   getCloudUsers,
+  getCloudSettings,
 } from '@/lib/cloudDb';
 
 // Force dynamic execution for real-time cloud data
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// GET /api/sync - Unified single round-trip fetch for all entities (Orders, Dukans, Products, Companies, Users)
+// GET /api/sync - Unified single round-trip fetch for all entities (Orders, Dukans, Products, Companies, Users, Settings)
 export async function GET() {
   try {
     const [
@@ -20,12 +21,14 @@ export async function GET() {
       productsRes,
       companiesRes,
       usersRes,
+      settingsRes,
     ] = await Promise.all([
       getCloudOrders(),
       getCloudDukans(),
       getCloudProducts(),
       getCloudCompanies(),
       getCloudUsers(),
+      getCloudSettings(),
     ]);
 
     const safeUsers = usersRes.map((u) => ({
@@ -50,6 +53,7 @@ export async function GET() {
         companies: companiesRes.companies || [],
         deletedCompanyIds: companiesRes.deletedIds || [],
         users: safeUsers,
+        settings: settingsRes || null,
         timestamp: new Date().toISOString(),
       },
       {

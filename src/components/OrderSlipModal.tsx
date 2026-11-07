@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Order } from '@/types';
+import { useAgencyLogo } from '@/hooks/useAgencyLogo';
 import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp } from '@/utils/generatePdfReceipt';
 import { X, Eye, Download, Share2, Printer, CheckCircle2, Store, Calendar, User, Phone, MapPin } from 'lucide-react';
 
@@ -12,6 +13,7 @@ interface OrderSlipModalProps {
 }
 
 export const OrderSlipModal: React.FC<OrderSlipModalProps> = ({ order, isOpen, onClose }) => {
+  const agencyLogo = useAgencyLogo();
   if (!isOpen || !order) return null;
 
   return (
@@ -44,7 +46,7 @@ export const OrderSlipModal: React.FC<OrderSlipModalProps> = ({ order, isOpen, o
           {/* Authentic Document Header */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs text-center relative overflow-hidden">
             <div className="w-12 h-12 mx-auto mb-2 rounded-2xl overflow-hidden border border-emerald-500/30 p-1 bg-white shadow-xs">
-              <img src="/logo.jpg" alt="Rushabh Agency" className="w-full h-full object-cover rounded-xl" />
+              <img src={agencyLogo || '/logo.jpg'} alt="Rushabh Agency" className="w-full h-full object-cover rounded-xl" />
             </div>
             <h2 className="text-lg font-black text-slate-900 tracking-tight">RUSHABH AGENCY</h2>
             <p className="text-[11px] font-bold text-emerald-700">Authorised FMCG Distributor & Stockist</p>

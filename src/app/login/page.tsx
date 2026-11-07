@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authenticateUser, getCurrentUser } from '@/lib/storage';
+import { useAgencyLogo } from '@/hooks/useAgencyLogo';
 import {
   Phone,
   Lock,
@@ -20,15 +21,28 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const agencyLogo = useAgencyLogo();
 
-  // Auto-redirect if already signed in (0ms instant access!)
+  // Tab-isolated auto-redirect: Only redirect if THIS specific tab already has an active session
   React.useEffect(() => {
-    const user = getCurrentUser();
-    if (user) {
-      if (user.role === 'OWNER') {
-        router.replace('/owner/orders');
-      } else {
-        router.replace('/trips');
+    if (typeof window !== 'undefined') {
+      const isSwitch = window.location.search.includes('switch=true');
+      if (isSwitch) {
+        // Explicit switch account requested: stay on login page
+        return;
+      }
+
+      // Check tab-isolated session first
+      const sessionUserStr = sessionStorage.getItem('rushabh_app_current_user_v5');
+      if (sessionUserStr) {
+        try {
+          const user = JSON.parse(sessionUserStr);
+          if (user?.role === 'OWNER') {
+            router.replace('/owner/orders');
+          } else if (user?.role === 'SALESMAN') {
+            router.replace('/trips');
+          }
+        } catch (e) {}
       }
     }
   }, [router]);
@@ -78,7 +92,7 @@ export default function LoginPage() {
       <div className="pt-6 text-center">
         <div className="w-20 h-20 rounded-3xl overflow-hidden shadow-xl shadow-emerald-700/10 mx-auto mb-3 border-2 border-emerald-500/40 p-1.5 bg-white ring-4 ring-emerald-500/10 flex items-center justify-center">
           <img
-            src="/logo.jpg"
+            src={agencyLogo || '/logo.jpg'}
             alt="Rushabh Agency"
             className="w-full h-full object-cover rounded-2xl"
           />
