@@ -10,6 +10,9 @@ import {
   getStoredProducts,
   createSalesmanOrder,
   getTodayOrderByDukan,
+  getActiveBillingOrderByDukan,
+  isDateToday,
+  isDateWithin3Days,
   updateSalesmanOrder,
   syncOrdersWithBackend,
   syncProductsWithBackend,
@@ -185,9 +188,9 @@ export default function SalesmanOrderTakingPage() {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Check if a bill was ALREADY booked today for this retailer
+    // Check if an active bill was booked within the 3-day minimum billing cycle for this retailer
     const checkOrder = () => {
-      const priorOrder = getTodayOrderByDukan(dukanId);
+      const priorOrder = getActiveBillingOrderByDukan(dukanId);
       if (priorOrder) {
         setExistingTodayOrder(priorOrder);
 
@@ -528,23 +531,35 @@ export default function SalesmanOrderTakingPage() {
           </span>
         </div>
 
-        {/* Existing Bill Notice Banner if updating today's bill */}
+        {/* Existing Bill Notice Banner if updating 3-day billing cycle bill */}
         {existingTodayOrder && (
-          <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-emerald-700 text-white p-3.5 rounded-2xl shadow-md space-y-1.5 animate-in fade-in">
+          <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-emerald-700 text-white p-3.5 rounded-2xl shadow-md space-y-2 animate-in fade-in">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-black uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full text-blue-100 border border-white/20">
-                Updating Bill #{existingTodayOrder.orderNumber}
+                Active Bill #{existingTodayOrder.orderNumber} ({isDateToday(existingTodayOrder.createdAt) ? 'Today' : new Date(existingTodayOrder.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })})
               </span>
               <span className="text-[10px] text-emerald-200 font-bold bg-white/10 px-2 py-0.5 rounded-full">
-                ✓ No Duplicate Bill
+                ✓ Original Format Loaded
               </span>
             </div>
             <p className="text-xs font-black leading-snug">
-              This shop already has a bill today. Any new items added will update Bill #{existingTodayOrder.orderNumber} directly!
+              This shop has an active bill from {isDateToday(existingTodayOrder.createdAt) ? 'today' : 'the 3-day billing cycle'}. Previous items are loaded below in original format.
             </p>
-            <p className="text-[11px] text-blue-100">
-              Previous items are pre-loaded in your cart below. Increase quantities, add new products, or adjust items.
-            </p>
+            <div className="flex items-center justify-between pt-1 border-t border-white/15 text-[11px]">
+              <span className="text-blue-100">
+                Items: {existingTodayOrder.items.length} • Total: ₹{existingTodayOrder.totalMrpValue.toFixed(2)}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setExistingTodayOrder(null);
+                  setCartItems([]);
+                }}
+                className="text-[10px] font-bold text-white underline hover:text-amber-200"
+              >
+                Start New Blank Bill Instead
+              </button>
+            </div>
           </div>
         )}
 

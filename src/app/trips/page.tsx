@@ -113,7 +113,8 @@ export default function TripsPage() {
 
   const totalDukanCount = dukans.length;
   const totalBookedToday = dukans.filter((d) => d.isBookedToday).length;
-  const totalPendingToday = totalDukanCount - totalBookedToday;
+  const totalBookedActiveRun = dukans.filter((d) => d.isBookedToday || d.isBookedWithin3Days).length;
+  const totalPendingToday = totalDukanCount - totalBookedActiveRun;
 
   // Today's Live KPI Metrics
   const todayOrders = orders.filter((o) => isDateToday(o.createdAt));
@@ -295,7 +296,7 @@ export default function TripsPage() {
 
           {trips.map((trip) => {
             const tripDukans = dukans.filter((d) => d.tripId === trip.id);
-            const bookedDukans = tripDukans.filter((d) => d.isBookedToday).length;
+            const bookedDukans = tripDukans.filter((d) => d.isBookedToday || d.isBookedWithin3Days).length;
             const pendingDukans = tripDukans.length - bookedDukans;
             const tripPercent = tripDukans.length > 0 ? Math.round((bookedDukans / tripDukans.length) * 100) : 0;
             const isAssigned = currentUser.assignedTripId === trip.id;

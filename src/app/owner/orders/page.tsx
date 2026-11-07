@@ -14,6 +14,7 @@ import {
   deleteOrder,
   generateWdmsSalesmanCsv,
   isDateToday,
+  isDateWithin3Days,
 } from '@/lib/storage';
 import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp } from '@/utils/generatePdfReceipt';
 import { MobileHeader } from '@/components/MobileHeader';
@@ -58,7 +59,7 @@ export default function OwnerOrdersPage() {
   const [allTrips, setAllTrips] = useState<Trip[]>([]);
   const [viewTab, setViewTab] = useState<'ORDERS' | 'PENDING'>('ORDERS');
   const [selectedTripFilter, setSelectedTripFilter] = useState<string>('all');
-  const [dateFilter, setDateFilter] = useState<'today' | 'all'>('today');
+  const [dateFilter, setDateFilter] = useState<'3days' | 'today' | 'all'>('3days');
   const [activeOrderForDetail, setActiveOrderForDetail] = useState<Order | null>(null);
   const [slipModalOrder, setSlipModalOrder] = useState<Order | null>(null);
 
@@ -215,6 +216,11 @@ export default function OwnerOrdersPage() {
     ])
   );
 
+  // 3-Day Minimum Billing Cycle Run (Retains orders for 3 days minimum for better billing)
+  const threeDayOrders = orders.filter((o) => isDateWithin3Days(o.createdAt));
+  const threeDayBookingValue = threeDayOrders.reduce((sum, o) => sum + o.totalMrpValue, 0);
+  const threeDayBoxesCount = threeDayOrders.reduce((sum, o) => sum + o.totalBoxes, 0);
+
   // Today's Live KPI Metrics
   const todayOrders = orders.filter((o) => isDateToday(o.createdAt));
   const todayOrdersCount = todayOrders.length;
@@ -240,12 +246,13 @@ export default function OwnerOrdersPage() {
   }
 
   const filteredOrders = orders.filter((o) => {
+    if (dateFilter === '3days' && !isDateWithin3Days(o.createdAt)) return false;
     if (dateFilter === 'today' && !isDateToday(o.createdAt)) return false;
     if (selectedTripFilter !== 'all' && o.tripName !== selectedTripFilter) return false;
     return true;
   });
 
-  const pendingDukans = dukans.filter((d) => !d.isBookedToday);
+  const pendingDukans = dukans.filter((d) => !d.isBookedToday && !d.isBookedWithin3Days);
   const filteredPendingDukans = pendingDukans.filter((d) => {
     if (selectedTripFilter === 'all') return true;
     const targetTrip = allTrips.find((t) => t.name === selectedTripFilter);
@@ -422,29 +429,41 @@ export default function OwnerOrdersPage() {
           </div>
         )}
 
-        {/* Date Filter: Today's Fresh Bills (Default) vs All History */}
-        <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-200/70 rounded-2xl">
+        {/* Date Filter: 3-Day Minimum Billing Cycle Run (Default) vs Today vs All History */}
+        <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-200/70 rounded-2xl">
           <button
-            onClick={() => setDateFilter('today')}
-            className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-              dateFilter === 'today'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+            onClick={() => setDateFilter('3days')}
+            className={`py-2 px-1 text-[11px] sm:text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1 ${
+              dateFilter === '3days'
+                ? 'bg-emerald-700 text-white shadow-xs'
+                : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
             }`}
+            title="Orders stay for 3 days minimum for better billing in original format"
           >
             <Clock className="w-3.5 h-3.5" />
-            <span>Today&apos;s Bills ({todayOrdersCount})</span>
+            <span className="truncate">3-Day Run ({threeDayOrders.length})</span>
+          </button>
+
+          <button
+            onClick={() => setDateFilter('today')}
+            className={`py-2 px-1 text-[11px] sm:text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1 ${
+              dateFilter === 'today'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
+            }`}
+          >
+            <span className="truncate">Today ({todayOrdersCount})</span>
           </button>
 
           <button
             onClick={() => setDateFilter('all')}
-            className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+            className={`py-2 px-1 text-[11px] sm:text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1 ${
               dateFilter === 'all'
                 ? 'bg-slate-900 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                : 'text-slate-700 hover:text-slate-900 hover:bg-white/50'
             }`}
           >
-            <span>All History ({orders.length})</span>
+            <span className="truncate">All ({orders.length})</span>
           </button>
         </div>
 
@@ -601,13 +620,28 @@ export default function OwnerOrdersPage() {
                         {order.dukanName}
                       </h3>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        Salesman: <strong>{order.salesmanName}</strong> • {new Date(order.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                        Salesman: <strong>{order.salesmanName}</strong> • {new Date(order.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} at {new Date(order.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
 
-                    <span className="text-xs font-black text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                      BOOKED
-                    </span>
+                    <div className="text-right flex flex-col items-end gap-1">
+                      <span className="text-xs font-black text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                        BOOKED
+                      </span>
+                      {isDateToday(order.createdAt) ? (
+                        <span className="text-[9px] font-black uppercase text-emerald-700 bg-emerald-100/70 px-1.5 py-0.2 rounded border border-emerald-300/60">
+                          Today
+                        </span>
+                      ) : isDateWithin3Days(order.createdAt) ? (
+                        <span className="text-[9px] font-black uppercase text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
+                          3-Day Cycle
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded">
+                          History
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Summary of Items */}

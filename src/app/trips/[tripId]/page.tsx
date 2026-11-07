@@ -174,11 +174,11 @@ export default function TripDukansPage() {
   if (!currentUser || !trip) return null;
 
   const totalCount = dukans.length;
-  const bookedCount = dukans.filter((d) => d.isBookedToday).length;
+  const bookedCount = dukans.filter((d) => d.isBookedToday || d.isBookedWithin3Days).length;
   const pendingCount = totalCount - bookedCount;
   const percentDone = totalCount > 0 ? Math.round((bookedCount / totalCount) * 100) : 0;
   const totalSalesToday = dukans.reduce(
-    (sum, d) => sum + (d.isBookedToday && d.lastOrderAmount ? d.lastOrderAmount : 0),
+    (sum, d) => sum + (d.lastOrderAmount ? d.lastOrderAmount : 0),
     0
   );
 
@@ -190,8 +190,8 @@ export default function TripDukansPage() {
 
     if (!matchesSearch) return false;
 
-    if (statusFilter === 'PENDING') return !d.isBookedToday;
-    if (statusFilter === 'BOOKED') return d.isBookedToday;
+    if (statusFilter === 'PENDING') return !d.isBookedToday && !d.isBookedWithin3Days;
+    if (statusFilter === 'BOOKED') return d.isBookedToday || d.isBookedWithin3Days;
     return true;
   });
 
@@ -459,7 +459,7 @@ export default function TripDukansPage() {
             </div>
           ) : (
             filteredDukans.map((dukan, idx) => {
-              const isBooked = dukan.isBookedToday;
+              const isBooked = dukan.isBookedToday || dukan.isBookedWithin3Days;
 
               return (
                 <div
@@ -513,13 +513,17 @@ export default function TripDukansPage() {
                       </div>
 
                       <div className="flex items-center gap-1.5 flex-shrink-0">
-                        {isBooked ? (
+                        {dukan.isBookedToday ? (
                           <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-emerald-300 shadow-2xs">
                             <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Booked Today
                           </span>
+                        ) : dukan.isBookedWithin3Days ? (
+                          <span className="bg-blue-50 text-blue-800 text-[10px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-blue-200 shadow-2xs">
+                            <CheckCircle2 className="w-3 h-3 text-blue-600" /> 3-Day Cycle
+                          </span>
                         ) : (
                           <span className="bg-amber-100 text-amber-900 text-[10px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-amber-300 shadow-2xs animate-pulse">
-                            <Clock className="w-3 h-3 text-amber-600" /> Pending Today
+                            <Clock className="w-3 h-3 text-amber-600" /> Pending Beat
                           </span>
                         )}
 

@@ -539,6 +539,20 @@ export const isDateToday = (dateStr?: string): boolean => {
   }
 };
 
+// Check if order was placed within the 3-day minimum billing cycle (Today, Yesterday, Day Before)
+export const isDateWithin3Days = (dateStr?: string): boolean => {
+  if (!dateStr) return false;
+  try {
+    const orderDate = new Date(dateStr);
+    const now = new Date();
+    // 3 full days minimum (start of day 2 days ago: e.g. Day 0, Day -1, Day -2 = 3 days)
+    const minDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2, 0, 0, 0, 0);
+    return orderDate.getTime() >= minDay.getTime();
+  } catch (e) {
+    return false;
+  }
+};
+
 export const updateDukanVisitStatus = (dukanId: string, status: Dukan['visitStatus']): void => {
   const all = getStoredDukans();
   const updated = all.map((d) => (d.id === dukanId ? { ...d, visitStatus: status } : d));
@@ -556,7 +570,9 @@ export const updateDukanOrderRecord = (
 
 export interface DukanDailyStatus extends Dukan {
   isBookedToday: boolean;
+  isBookedWithin3Days: boolean;
   todayOrder?: Order;
+  recentOrder?: Order;
 }
 
 export const getDukansWithDailyStatus = (tripId?: string): DukanDailyStatus[] => {
@@ -566,22 +582,39 @@ export const getDukansWithDailyStatus = (tripId?: string): DukanDailyStatus[] =>
   const filtered = tripId ? allDukans.filter((d) => d.tripId === tripId) : allDukans;
 
   return filtered.map((dukan) => {
-    // Find the latest order placed TODAY for this dukan
+    // 1. Check order placed TODAY
     const todayOrder = allOrders.find(
       (o) => o.dukanId === dukan.id && isDateToday(o.createdAt)
     );
 
+    // 2. Check active order placed within the 3-day minimum billing cycle
+    const recent3DayOrder = allOrders.find(
+      (o) => o.dukanId === dukan.id && isDateWithin3Days(o.createdAt)
+    );
+
+    const activeOrder = todayOrder || recent3DayOrder;
     const isBookedToday = Boolean(todayOrder);
+    const isBookedWithin3Days = Boolean(recent3DayOrder);
 
     return {
       ...dukan,
-      visitStatus: isBookedToday ? ('ORDER_BOOKED' as const) : ('PENDING' as const),
+      visitStatus: (isBookedToday || isBookedWithin3Days)
+        ? ('ORDER_BOOKED' as const)
+        : ('PENDING' as const),
       isBookedToday,
+      isBookedWithin3Days,
       todayOrder: todayOrder || undefined,
-      lastOrderAmount: todayOrder ? todayOrder.totalMrpValue : undefined,
-      lastOrderNumber: todayOrder ? todayOrder.orderNumber : undefined,
-      lastOrderId: todayOrder ? todayOrder.id : undefined,
-      lastOrderDate: todayOrder ? todayOrder.createdAt : undefined,
+      recentOrder: activeOrder || undefined,
+      lastOrderAmount: activeOrder ? activeOrder.totalMrpValue : undefined,
+      lastOrderNumber: activeOrder ? activeOrder.orderNumber : undefined,
+      lastOrderId: activeOrder ? activeOrder.id : undefined,
+      lastOrderDate: activeOrder ? activeOrder.createdAt : undefined,
+      lastOrderTime: activeOrder
+        ? new Date(activeOrder.createdAt).toLocaleTimeString('en-IN', {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : undefined,
     };
   });
 };
@@ -1268,6 +1301,16 @@ export const getTodayOrderByDukan = (dukanId: string): Order | undefined => {
   return orders.find((o) => o.dukanId === dukanId && isDateToday(o.createdAt));
 };
 
+// Find active order within the 3-day minimum billing cycle for better billing in original format
+export const getActiveBillingOrderByDukan = (dukanId: string): Order | undefined => {
+  const orders = getStoredOrders();
+  // 1. Check today's order first
+  const todayOrder = orders.find((o) => o.dukanId === dukanId && isDateToday(o.createdAt));
+  if (todayOrder) return todayOrder;
+  // 2. Check orders within 3-day billing window
+  return orders.find((o) => o.dukanId === dukanId && isDateWithin3Days(o.createdAt));
+};
+
 // Salesman Feature: Update existing bill (Add/modify items on previous bill of today without duplicate bill)
 export const updateSalesmanOrder = (
   orderId: string,
@@ -1553,21 +1596,26 @@ export const syncOrdersWithBackend = async (): Promise<Order[]> => {
       );
       saveOrders(merged);
 
-      // 4. Update all dukan visit statuses deterministically
+      // 4. Update all dukan visit statuses deterministically for 3-day minimum billing cycle
       const allDukans = getStoredDukans();
       const updatedDukans = allDukans.map((dukan) => {
         const todayOrder = merged.find(
           (o) => o.dukanId === dukan.id && isDateToday(o.createdAt)
         );
-        if (todayOrder) {
+        const recent3DayOrder = merged.find(
+          (o) => o.dukanId === dukan.id && isDateWithin3Days(o.createdAt)
+        );
+        const activeOrder = todayOrder || recent3DayOrder;
+
+        if (activeOrder) {
           return {
             ...dukan,
             visitStatus: 'ORDER_BOOKED' as const,
-            lastOrderAmount: todayOrder.totalMrpValue,
-            lastOrderNumber: todayOrder.orderNumber,
-            lastOrderId: todayOrder.id,
-            lastOrderDate: todayOrder.createdAt,
-            lastOrderTime: new Date(todayOrder.createdAt).toLocaleTimeString('en-IN', {
+            lastOrderAmount: activeOrder.totalMrpValue,
+            lastOrderNumber: activeOrder.orderNumber,
+            lastOrderId: activeOrder.id,
+            lastOrderDate: activeOrder.createdAt,
+            lastOrderTime: new Date(activeOrder.createdAt).toLocaleTimeString('en-IN', {
               hour: '2-digit',
               minute: '2-digit',
             }),
@@ -1859,18 +1907,21 @@ export const syncAllWithBackend = async (): Promise<{ orders: Order[]; dukans: D
         );
         const deduplicatedDukans = deduplicateDukans(combinedDukans);
 
-        // Update visit statuses on dukans
+        // Update visit statuses on dukans (keeps orders for 3 days minimum for better billing in original format)
         const updatedDukans = deduplicatedDukans.map((dukan) => {
           const todayOrder = mergedOrders.find((o) => o.dukanId === dukan.id && isDateToday(o.createdAt));
-          if (todayOrder) {
+          const recent3DayOrder = mergedOrders.find((o) => o.dukanId === dukan.id && isDateWithin3Days(o.createdAt));
+          const activeOrder = todayOrder || recent3DayOrder;
+
+          if (activeOrder) {
             return {
               ...dukan,
               visitStatus: 'ORDER_BOOKED' as const,
-              lastOrderAmount: todayOrder.totalMrpValue,
-              lastOrderNumber: todayOrder.orderNumber,
-              lastOrderId: todayOrder.id,
-              lastOrderDate: todayOrder.createdAt,
-              lastOrderTime: new Date(todayOrder.createdAt).toLocaleTimeString('en-IN', {
+              lastOrderAmount: activeOrder.totalMrpValue,
+              lastOrderNumber: activeOrder.orderNumber,
+              lastOrderId: activeOrder.id,
+              lastOrderDate: activeOrder.createdAt,
+              lastOrderTime: new Date(activeOrder.createdAt).toLocaleTimeString('en-IN', {
                 hour: '2-digit',
                 minute: '2-digit',
               }),
