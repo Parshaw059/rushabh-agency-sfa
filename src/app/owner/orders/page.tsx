@@ -15,6 +15,7 @@ import {
   generateWdmsSalesmanCsv,
   isDateToday,
   isDateWithin3Days,
+  saveAgencyLogoLocally,
 } from '@/lib/storage';
 import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp } from '@/utils/generatePdfReceipt';
 import { MobileHeader } from '@/components/MobileHeader';
@@ -902,7 +903,9 @@ export default function OwnerOrdersPage() {
         isOpen={isChangeLogoOpen}
         onClose={() => setIsChangeLogoOpen(false)}
         currentLogo={agencyLogo}
-        onLogoUpdated={() => {}}
+        onLogoUpdated={(newLogo) => {
+          saveAgencyLogoLocally(newLogo);
+        }}
       />
     </div>
   );

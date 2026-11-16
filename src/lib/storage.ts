@@ -44,11 +44,26 @@ export const saveAgencyLogoLocally = (logoUrl: string): void => {
   try {
     const data = localStorage.getItem(SETTINGS_KEY);
     const existing = data ? JSON.parse(data) : {};
+    if (existing.logoUrl === logoUrl) return; // avoid duplicate dispatch
     const updated = { ...existing, logoUrl, updatedAt: new Date().toISOString() };
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
     window.dispatchEvent(new CustomEvent('rushabh-logo-updated', { detail: logoUrl }));
     broadcastSync({ type: 'LOGO_UPDATED', logoUrl });
   } catch (e) {}
+};
+
+export const fetchAgencyLogoFromCloud = async (): Promise<string | null> => {
+  if (!isBrowser) return null;
+  try {
+    const res = await fetch('/api/settings', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data && data.success && data.settings && data.settings.logoUrl) {
+      saveAgencyLogoLocally(data.settings.logoUrl);
+      return data.settings.logoUrl;
+    }
+  } catch (e) {}
+  return null;
 };
 
 export const updateAgencyLogo = async (logoUrl: string): Promise<boolean> => {

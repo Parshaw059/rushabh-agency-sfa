@@ -16,7 +16,7 @@ import {
   Package,
 } from 'lucide-react';
 import { User as UserType } from '@/types';
-import { logoutUser, syncAllWithBackend } from '@/lib/storage';
+import { logoutUser, syncAllWithBackend, saveAgencyLogoLocally } from '@/lib/storage';
 import { useAgencyLogo } from '@/hooks/useAgencyLogo';
 import { ChangeCredentialsModal } from './ChangeCredentialsModal';
 import { ChangeLogoModal } from './ChangeLogoModal';
@@ -104,17 +104,35 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md text-slate-800 border-b border-slate-200/90 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-3">
           {/* Left: Logo & Title / Back button */}
-          <div className="flex items-center gap-3 min-w-0">
-            {showBack ? (
+          <div className="flex items-center gap-2.5 min-w-0">
+            {showBack && (
               <button
                 onClick={handleBack}
-                className="p-1.5 -ml-1 rounded-xl bg-slate-100 text-slate-700 hover:text-slate-900 hover:bg-slate-200 border border-slate-200 transition-colors"
+                className="p-1.5 -ml-1 rounded-xl bg-slate-100 text-slate-700 hover:text-slate-900 hover:bg-slate-200 border border-slate-200 transition-colors flex-shrink-0"
                 title="Go Back"
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
+            )}
+
+            {isOwner ? (
+              <button
+                type="button"
+                onClick={() => setIsChangeLogoOpen(true)}
+                className="relative group flex items-center flex-shrink-0 cursor-pointer"
+                title="Click to change Agency Logo everywhere"
+              >
+                <img
+                  src={agencyLogo || '/logo.jpg'}
+                  alt="Rushabh Agency"
+                  className="w-8 h-8 rounded-xl object-cover border border-emerald-500/40 shadow-xs flex-shrink-0 ring-2 ring-emerald-500/15 group-hover:ring-emerald-500 transition-all"
+                />
+                <span className="absolute -bottom-1 -right-1 bg-emerald-600 text-white rounded-full p-0.5 shadow-xs">
+                  <ImageIcon className="w-2.5 h-2.5" />
+                </span>
+              </button>
             ) : (
-              <Link href="/trips" className="flex items-center gap-2.5">
+              <Link href="/trips" className="flex items-center gap-2.5 flex-shrink-0" title="Rushabh Agency Home">
                 <img
                   src={agencyLogo || '/logo.jpg'}
                   alt="Rushabh Agency"
@@ -274,7 +292,9 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
         isOpen={isChangeLogoOpen}
         onClose={() => setIsChangeLogoOpen(false)}
         currentLogo={agencyLogo}
-        onLogoUpdated={() => {}}
+        onLogoUpdated={(newLogo) => {
+          saveAgencyLogoLocally(newLogo);
+        }}
       />
     </>
   );

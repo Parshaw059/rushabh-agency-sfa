@@ -80,6 +80,9 @@ export function ChangeLogoModal({
 
     try {
       const ok = await updateAgencyLogo(preview);
+      if (!ok) {
+        throw new Error('Failed to save to cloud server. Please check your internet connection.');
+      }
       onLogoUpdated(preview);
       setSuccessMsg('Logo updated everywhere at once! All devices, bills, and headers are refreshed.');
       setTimeout(() => {
@@ -98,7 +101,10 @@ export function ChangeLogoModal({
     setIsSaving(true);
     setError(null);
     try {
-      await updateAgencyLogo('/logo.jpg');
+      const ok = await updateAgencyLogo('/logo.jpg');
+      if (!ok) {
+        throw new Error('Failed to reset logo on cloud server.');
+      }
       onLogoUpdated('/logo.jpg');
       setSuccessMsg('Reset to default Rushabh Agency logo.');
       setTimeout(() => {
