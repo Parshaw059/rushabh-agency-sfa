@@ -153,7 +153,7 @@ export default function LoginPage() {
                 placeholder="Enter 10-digit mobile or username"
                 required
                 autoComplete="username"
-                className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white font-mono"
+                className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 text-base sm:text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white font-mono"
               />
             </div>
           </div>
@@ -172,7 +172,7 @@ export default function LoginPage() {
                 placeholder="Enter 4-digit security PIN"
                 required
                 autoComplete="current-password"
-                className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white font-mono tracking-widest"
+                className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 text-base sm:text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white font-mono tracking-widest"
               />
               <button
                 type="button"

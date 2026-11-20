@@ -677,13 +677,13 @@ export default function SalesmanOrderTakingPage() {
           </div>
 
           <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search items from all companies (e.g. Parachute, Red, Balm)..."
-              className="w-full pl-9 pr-8 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
+              className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-base sm:text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
             />
             {searchQuery && (
               <button
@@ -990,25 +990,36 @@ export default function SalesmanOrderTakingPage() {
 
                     <div className="divide-y divide-slate-200/80 p-2">
                       {cItems.map((item) => (
-                        <div key={item.product.id} className="py-2 flex items-center justify-between text-xs">
-                          <div>
-                            <span className="font-black text-slate-900 block leading-tight">
-                              {item.product.name}
-                            </span>
-                            <span className="text-[10px] text-slate-500">
-                              {item.boxQty > 0 ? `${item.boxQty} Box ` : ''}
-                              {item.looseQty > 0 ? `+ ${item.looseQty} Loose ` : ''}
-                              = <strong>{item.totalUnits} Pcs</strong> @ ₹{item.product.mrp}
-                            </span>
+                        <div key={item.product.id} className="py-2.5 flex items-center justify-between text-xs gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-mono text-[9px] font-black text-emerald-800 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                {item.product.wdmsCode || 'SKU'}
+                              </span>
+                              <span className="font-black text-slate-900 leading-tight">
+                                {item.product.name}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-medium">({item.product.packSize})</span>
+                            </div>
+                            <div className="text-[11px] text-slate-600 mt-1 flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-slate-700">MRP: ₹{item.product.mrp.toFixed(2)}</span>
+                              <span className="text-slate-300">•</span>
+                              <span className="font-bold text-emerald-800">
+                                {item.boxQty > 0 ? `${item.boxQty} Box ` : ''}
+                                {item.looseQty > 0 ? `${item.looseQty} Pcs ` : ''}
+                                ({item.totalUnits} Pcs)
+                              </span>
+                            </div>
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            <span className="font-black text-slate-900 text-xs">
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="font-black text-slate-900 text-xs whitespace-nowrap">
                               ₹{item.lineMrpTotal.toFixed(2)}
                             </span>
                             <button
                               onClick={() => handleUpdateItem(item.product, 0, 0)}
                               className="text-slate-400 hover:text-red-600 p-1"
+                              title="Remove item"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1030,7 +1041,7 @@ export default function SalesmanOrderTakingPage() {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="e.g. Urgent morning tempo delivery"
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 text-base sm:text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 

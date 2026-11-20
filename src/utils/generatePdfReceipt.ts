@@ -82,30 +82,26 @@ export const buildOrderPdfDoc = (order: Order): jsPDF => {
   doc.text(`Booking Time: ${new Date(order.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`, rightX + 4, infoY + 21);
   doc.text(`Order Status: BOOKED IN FIELD`, rightX + 4, infoY + 25.5);
 
-  // 3. Items Table (Exact 182mm width)
+  // 3. Items Table (Exact 182mm width) - Order: WDMS Code -> Product Name -> MRP -> Box/Pcs -> Total Amount
   const tableRows = order.items.map((item, index) => [
     (index + 1).toString(),
-    item.wdmsCode,
-    item.companyName,
-    `${item.productName} (${item.packSize})`,
-    `${item.unitsPerBox} pcs`,
+    item.wdmsCode || '-',
+    `${item.productName} (${item.packSize})\n[${item.companyName}]`,
+    `Rs. ${item.mrp.toFixed(2)}`,
     item.boxQty > 0 ? `${item.boxQty} Box` : '-',
     item.looseQty > 0 ? `${item.looseQty} Pcs` : '-',
     `${item.totalUnits} Pcs`,
-    `Rs. ${item.mrp.toFixed(2)}`,
     `Rs. ${item.lineMrpTotal.toFixed(2)}`,
   ]);
 
   const tableFoot = [[
     '',
     'TOTAL',
-    '',
     `${order.items.length} SKUs Ordered`,
     '',
     `${order.totalBoxes} Boxes`,
     `${order.totalLoose} Pcs`,
     `${order.totalUnits} Units`,
-    '',
     `Rs. ${order.totalMrpValue.toFixed(2)}`,
   ]];
 
@@ -114,14 +110,12 @@ export const buildOrderPdfDoc = (order: Order): jsPDF => {
     head: [[
       'Sr.',
       'WDMS Code',
-      'Company',
-      'Product & Pack Size',
-      'Box Pack',
-      'Boxes (Peti)',
-      'Loose',
-      'Total Pcs',
+      'Product & Brand',
       'MRP',
-      'MRP Total',
+      'Boxes (Peti)',
+      'Loose Pcs',
+      'Total Pcs',
+      'Total Amount',
     ]],
     body: tableRows,
     foot: tableFoot,
@@ -151,15 +145,13 @@ export const buildOrderPdfDoc = (order: Order): jsPDF => {
     },
     columnStyles: {
       0: { halign: 'center', cellWidth: 8 },
-      1: { halign: 'center', cellWidth: 20 },
-      2: { halign: 'left', cellWidth: 20 },
-      3: { halign: 'left', cellWidth: 46 },
-      4: { halign: 'center', cellWidth: 14 },
-      5: { halign: 'center', cellWidth: 14, fontStyle: 'bold' },
-      6: { halign: 'center', cellWidth: 12 },
-      7: { halign: 'center', cellWidth: 14, fontStyle: 'bold' },
-      8: { halign: 'right', cellWidth: 16 },
-      9: { halign: 'right', cellWidth: 18, fontStyle: 'bold' },
+      1: { halign: 'center', cellWidth: 25, fontStyle: 'bold' },
+      2: { halign: 'left', cellWidth: 57 },
+      3: { halign: 'right', cellWidth: 18, fontStyle: 'bold' },
+      4: { halign: 'center', cellWidth: 18, fontStyle: 'bold' },
+      5: { halign: 'center', cellWidth: 16 },
+      6: { halign: 'center', cellWidth: 18, fontStyle: 'bold' },
+      7: { halign: 'right', cellWidth: 22, fontStyle: 'bold' },
     },
     margin: { left: 14, right: 14 },
   });
@@ -304,9 +296,9 @@ export const generateWhatsAppShareLink = (order: Order, agencyPhone: string = '9
 
   order.items.forEach((item, idx) => {
     const boxText = item.boxQty > 0 ? `${item.boxQty} Box ` : '';
-    const looseText = item.looseQty > 0 ? `${item.looseQty} Loose ` : '';
-    text += `${idx + 1}. [${item.wdmsCode}] *${item.productName}* (${item.packSize})\n`;
-    text += `   👉 ${boxText}${looseText}= *${item.totalUnits} Pcs* @ MRP Rs. ${item.mrp} = Rs. ${item.lineMrpTotal.toFixed(2)}\n`;
+    const looseText = item.looseQty > 0 ? `${item.looseQty} Pcs ` : '';
+    text += `${idx + 1}. [${item.wdmsCode || 'SKU'}] *${item.productName}* (${item.packSize})\n`;
+    text += `   👉 MRP: Rs. ${item.mrp.toFixed(2)} | ${boxText}${looseText}= *${item.totalUnits} Pcs* | Amount: Rs. ${item.lineMrpTotal.toFixed(2)}\n`;
   });
 
   text += `\n📊 *TOTAL:* ${order.totalBoxes} Boxes | ${order.totalLoose} Loose | *${order.totalUnits} Total Pcs*\n`;

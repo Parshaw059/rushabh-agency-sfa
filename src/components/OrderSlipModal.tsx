@@ -104,38 +104,40 @@ export const OrderSlipModal: React.FC<OrderSlipModalProps> = ({ order, isOpen, o
                 <thead>
                   <tr className="bg-emerald-700 text-white text-[10px] uppercase font-black tracking-wider">
                     <th className="p-2 text-center w-6">#</th>
-                    <th className="p-2">Brand & Product</th>
-                    <th className="p-2 text-center">Pack</th>
-                    <th className="p-2 text-center">Box</th>
-                    <th className="p-2 text-center">Loose</th>
-                    <th className="p-2 text-center">Total</th>
-                    <th className="p-2 text-right">MRP</th>
-                    <th className="p-2 text-right">Amount</th>
+                    <th className="p-2 font-mono whitespace-nowrap">WDMS Code</th>
+                    <th className="p-2">Product Name</th>
+                    <th className="p-2 text-right whitespace-nowrap">MRP</th>
+                    <th className="p-2 text-center whitespace-nowrap">Box</th>
+                    <th className="p-2 text-center whitespace-nowrap">Loose Pcs</th>
+                    <th className="p-2 text-center whitespace-nowrap">Total Pcs</th>
+                    <th className="p-2 text-right whitespace-nowrap">Total Amount</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-[11px]">
                   {order.items.map((item, idx) => (
                     <tr key={idx} className="hover:bg-slate-50/80">
                       <td className="p-2 text-center text-slate-400 font-bold">{idx + 1}</td>
+                      <td className="p-2 font-mono text-[10px] font-black text-emerald-800 whitespace-nowrap bg-emerald-50/50">
+                        {item.wdmsCode || '-'}
+                      </td>
                       <td className="p-2">
-                        <span className="text-[9px] font-bold text-slate-400 block uppercase">{item.companyName}</span>
+                        <span className="text-[9px] font-bold text-slate-400 block uppercase leading-tight">{item.companyName}</span>
                         <span className="font-black text-slate-900 leading-tight">{item.productName}</span>
                         <span className="text-[10px] text-slate-500 font-medium ml-1">({item.packSize})</span>
                       </td>
-                      <td className="p-2 text-center font-mono text-slate-500">{item.unitsPerBox}</td>
-                      <td className="p-2 text-center font-black text-emerald-800">
-                        {item.boxQty > 0 ? `${item.boxQty} Box` : '-'}
-                      </td>
-                      <td className="p-2 text-center font-bold text-slate-600">
-                        {item.looseQty > 0 ? `${item.looseQty} Pcs` : '-'}
-                      </td>
-                      <td className="p-2 text-center font-black text-slate-900">
-                        {item.totalUnits}
-                      </td>
-                      <td className="p-2 text-right font-mono text-slate-500">
+                      <td className="p-2 text-right font-mono font-bold text-slate-700 whitespace-nowrap">
                         Rs. {item.mrp.toFixed(2)}
                       </td>
-                      <td className="p-2 text-right font-mono font-black text-slate-900">
+                      <td className="p-2 text-center font-black text-emerald-800 whitespace-nowrap">
+                        {item.boxQty > 0 ? `${item.boxQty} Box` : '-'}
+                      </td>
+                      <td className="p-2 text-center font-bold text-slate-600 whitespace-nowrap">
+                        {item.looseQty > 0 ? `${item.looseQty} Pcs` : '-'}
+                      </td>
+                      <td className="p-2 text-center font-black text-slate-900 whitespace-nowrap bg-slate-50/60">
+                        {item.totalUnits} Pcs
+                      </td>
+                      <td className="p-2 text-right font-mono font-black text-slate-900 whitespace-nowrap">
                         Rs. {item.lineMrpTotal.toFixed(2)}
                       </td>
                     </tr>
@@ -143,14 +145,13 @@ export const OrderSlipModal: React.FC<OrderSlipModalProps> = ({ order, isOpen, o
                 </tbody>
                 <tfoot>
                   <tr className="bg-emerald-50/80 font-black text-xs text-emerald-950 border-t-2 border-emerald-300">
-                    <td colSpan={3} className="p-2.5 text-left font-black uppercase text-[10px] tracking-wider">
-                      TOTAL SUMMARY
+                    <td colSpan={4} className="p-2.5 text-left font-black uppercase text-[10px] tracking-wider">
+                      TOTAL SUMMARY ({order.items.length} SKUs)
                     </td>
-                    <td className="p-2 text-center text-emerald-800">{order.totalBoxes} Box</td>
-                    <td className="p-2 text-center text-emerald-800">{order.totalLoose} Pcs</td>
+                    <td className="p-2 text-center text-emerald-800 font-black">{order.totalBoxes} Box</td>
+                    <td className="p-2 text-center text-emerald-800 font-black">{order.totalLoose} Pcs</td>
                     <td className="p-2 text-center text-emerald-900 font-extrabold">{order.totalUnits} Pcs</td>
-                    <td className="p-2 text-right text-[10px] text-slate-500">MRP Total</td>
-                    <td className="p-2 text-right text-emerald-800 font-extrabold text-sm">
+                    <td className="p-2 text-right text-emerald-800 font-extrabold text-sm whitespace-nowrap">
                       Rs. {order.totalMrpValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     </td>
                   </tr>

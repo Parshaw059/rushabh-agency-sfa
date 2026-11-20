@@ -755,14 +755,22 @@ export default function OwnerOrdersPage() {
                 <div key={item.productId} className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs">
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <span className="font-black text-slate-900 block leading-tight">
-                        {item.productName}
-                      </span>
-                      <span className="text-[10px] text-slate-500">
-                        {item.companyName} • 1 Box = {item.unitsPerBox} pcs
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono text-[9px] font-black text-emerald-800 bg-emerald-100/70 px-1.5 py-0.2 rounded border border-emerald-300/60">
+                          {item.wdmsCode || 'SKU'}
+                        </span>
+                        <span className="font-black text-slate-900 leading-tight">
+                          {item.productName}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-medium">({item.packSize})</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1.5">
+                        <span className="font-bold text-slate-700">MRP: ₹{item.mrp.toFixed(2)}</span>
+                        <span className="text-slate-300">•</span>
+                        <span>{item.companyName} • 1 Box = {item.unitsPerBox} pcs</span>
+                      </div>
                     </div>
-                    <span className="font-black text-slate-900">
+                    <span className="font-black text-slate-900 whitespace-nowrap">
                       ₹{item.lineMrpTotal.toFixed(2)}
                     </span>
                   </div>
