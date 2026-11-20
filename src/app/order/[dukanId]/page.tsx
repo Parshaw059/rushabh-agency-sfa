@@ -23,7 +23,7 @@ import {
   syncCompaniesWithBackend,
   COMPANY_COLOR_PRESETS,
 } from '@/lib/storage';
-import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp } from '@/utils/generatePdfReceipt';
+import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp, cleanProductName } from '@/utils/generatePdfReceipt';
 import { MobileHeader } from '@/components/MobileHeader';
 import { OrderSlipModal } from '@/components/OrderSlipModal';
 import { TruckDispatchAnimation } from '@/components/TruckDispatchAnimation';
@@ -997,9 +997,8 @@ export default function SalesmanOrderTakingPage() {
                                 {item.product.wdmsCode || 'SKU'}
                               </span>
                               <span className="font-black text-slate-900 leading-tight">
-                                {item.product.name}
+                                {cleanProductName(item.product.name, item.product.packSize)}
                               </span>
-                              <span className="text-[10px] text-slate-500 font-medium">({item.product.packSize})</span>
                             </div>
                             <div className="text-[11px] text-slate-600 mt-1 flex items-center gap-1.5 flex-wrap">
                               <span className="font-bold text-slate-700">MRP: ₹{item.product.mrp.toFixed(2)}</span>

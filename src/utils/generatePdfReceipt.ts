@@ -2,6 +2,21 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Order } from '@/types';
 
+/**
+ * Strips any redundant pack size appended to the product name (e.g., "(100g)", "(50G)").
+ * Applied to all existing and new orders.
+ */
+export const cleanProductName = (name: string, packSize?: string): string => {
+  if (!name) return '';
+  let clean = name.trim();
+  if (packSize && packSize.trim()) {
+    const escaped = packSize.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    clean = clean.replace(new RegExp(`\\s*\\(${escaped}\\)$`, 'i'), '').trim();
+  }
+  clean = clean.replace(/\s*\([0-9]+(?:\.[0-9]+)?\s*(?:g|gm|gms|ml|ltr|l|kg|pcs|pc|tablet|tab|s)\)$/i, '').trim();
+  return clean;
+};
+
 export const buildOrderPdfDoc = (order: Order): jsPDF => {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -82,11 +97,11 @@ export const buildOrderPdfDoc = (order: Order): jsPDF => {
   doc.text(`Booking Time: ${new Date(order.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`, rightX + 4, infoY + 21);
   doc.text(`Order Status: BOOKED IN FIELD`, rightX + 4, infoY + 25.5);
 
-  // 3. Items Table (Exact 182mm width) - Order: WDMS Code -> Product Name -> MRP -> Box/Pcs -> Total Amount
+  // 3. Items Table (Exact 182mm width) - Order: WDMS Code -> Product Name -> MRP -> Box -> Loose -> Total
   const tableRows = order.items.map((item, index) => [
     (index + 1).toString(),
     item.wdmsCode || '-',
-    `${item.productName} (${item.packSize})\n[${item.companyName}]`,
+    `${cleanProductName(item.productName, item.packSize)}\n[${item.companyName}]`,
     `Rs. ${item.mrp.toFixed(2)}`,
     item.boxQty > 0 ? `${item.boxQty} Box` : '-',
     item.looseQty > 0 ? `${item.looseQty} Pcs` : '-',
@@ -110,10 +125,10 @@ export const buildOrderPdfDoc = (order: Order): jsPDF => {
     head: [[
       'Sr.',
       'WDMS Code',
-      'Product & Brand',
+      'Product Name',
       'MRP',
-      'Boxes (Peti)',
-      'Loose Pcs',
+      'Box (Peti)',
+      'Loose',
       'Total Pcs',
       'Total Amount',
     ]],
@@ -297,8 +312,9 @@ export const generateWhatsAppShareLink = (order: Order, agencyPhone: string = '9
   order.items.forEach((item, idx) => {
     const boxText = item.boxQty > 0 ? `${item.boxQty} Box ` : '';
     const looseText = item.looseQty > 0 ? `${item.looseQty} Pcs ` : '';
-    text += `${idx + 1}. [${item.wdmsCode || 'SKU'}] *${item.productName}* (${item.packSize})\n`;
-    text += `   👉 MRP: Rs. ${item.mrp.toFixed(2)} | ${boxText}${looseText}= *${item.totalUnits} Pcs* | Amount: Rs. ${item.lineMrpTotal.toFixed(2)}\n`;
+    const pName = cleanProductName(item.productName, item.packSize);
+    text += `${idx + 1}. [${item.wdmsCode || 'SKU'}] *${pName}*\n`;
+    text += `   👉 MRP: Rs. ${item.mrp.toFixed(2)} | Box: ${boxText || '0'} | Loose: ${looseText || '0'} | Total: *${item.totalUnits} Pcs* | Amount: Rs. ${item.lineMrpTotal.toFixed(2)}\n`;
   });
 
   text += `\n📊 *TOTAL:* ${order.totalBoxes} Boxes | ${order.totalLoose} Loose | *${order.totalUnits} Total Pcs*\n`;

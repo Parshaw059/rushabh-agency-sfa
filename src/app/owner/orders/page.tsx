@@ -17,7 +17,7 @@ import {
   isDateWithin3Days,
   saveAgencyLogoLocally,
 } from '@/lib/storage';
-import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp } from '@/utils/generatePdfReceipt';
+import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp, cleanProductName } from '@/utils/generatePdfReceipt';
 import { MobileHeader } from '@/components/MobileHeader';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { OrderSlipModal } from '@/components/OrderSlipModal';
@@ -760,9 +760,8 @@ export default function OwnerOrdersPage() {
                           {item.wdmsCode || 'SKU'}
                         </span>
                         <span className="font-black text-slate-900 leading-tight">
-                          {item.productName}
+                          {cleanProductName(item.productName, item.packSize)}
                         </span>
-                        <span className="text-[10px] text-slate-500 font-medium">({item.packSize})</span>
                       </div>
                       <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1.5">
                         <span className="font-bold text-slate-700">MRP: ₹{item.mrp.toFixed(2)}</span>

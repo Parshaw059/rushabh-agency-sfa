@@ -3,7 +3,7 @@
 import React from 'react';
 import { Order } from '@/types';
 import { useAgencyLogo } from '@/hooks/useAgencyLogo';
-import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp } from '@/utils/generatePdfReceipt';
+import { generateOrderPdf, viewOrderPdf, generateWhatsAppShareLink, shareOrderPdfViaWhatsApp, cleanProductName } from '@/utils/generatePdfReceipt';
 import { X, Eye, Download, Share2, Printer, CheckCircle2, Store, Calendar, User, Phone, MapPin } from 'lucide-react';
 
 interface OrderSlipModalProps {
@@ -108,9 +108,9 @@ export const OrderSlipModal: React.FC<OrderSlipModalProps> = ({ order, isOpen, o
                     <th className="p-2">Product Name</th>
                     <th className="p-2 text-right whitespace-nowrap">MRP</th>
                     <th className="p-2 text-center whitespace-nowrap">Box</th>
-                    <th className="p-2 text-center whitespace-nowrap">Loose Pcs</th>
+                    <th className="p-2 text-center whitespace-nowrap">Loose</th>
                     <th className="p-2 text-center whitespace-nowrap">Total Pcs</th>
-                    <th className="p-2 text-right whitespace-nowrap">Total Amount</th>
+                    <th className="p-2 text-right whitespace-nowrap">Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-[11px]">
@@ -122,8 +122,9 @@ export const OrderSlipModal: React.FC<OrderSlipModalProps> = ({ order, isOpen, o
                       </td>
                       <td className="p-2">
                         <span className="text-[9px] font-bold text-slate-400 block uppercase leading-tight">{item.companyName}</span>
-                        <span className="font-black text-slate-900 leading-tight">{item.productName}</span>
-                        <span className="text-[10px] text-slate-500 font-medium ml-1">({item.packSize})</span>
+                        <span className="font-black text-slate-900 leading-tight">
+                          {cleanProductName(item.productName, item.packSize)}
+                        </span>
                       </td>
                       <td className="p-2 text-right font-mono font-bold text-slate-700 whitespace-nowrap">
                         Rs. {item.mrp.toFixed(2)}
